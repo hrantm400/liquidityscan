@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Monitor Dashboard - Liquidity Scan</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#13ec37",
+                        "primary-hover": "#0fb82b",
+                        "background-dark": "#0b140d",
+                        "surface-dark": "#0a140d",
+                        "glass-border": "rgba(255, 255, 255, 0.08)",
+                        "glass-bg": "rgba(10, 20, 13, 0.6)",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "sans": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"],
+                    },
+                    backgroundImage: {
+                        'cinematic-gradient': 'radial-gradient(circle at 50% 0%, rgba(19, 236, 55, 0.15) 0%, rgba(5, 11, 7, 0) 70%)',
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b140d;
+            color: white;
+            overflow: hidden;
+        }
+        .bg-grid-pattern {
+            background-size: 40px 40px;
+            background-image: linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.02);
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .glass-panel {
+            background: rgba(20, 30, 22, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(19, 236, 55, 0.15);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+        .glass-sidebar {
+            background: rgba(11, 20, 13, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .active-nav-glow {
+            background: rgba(19, 236, 55, 0.08);
+            border-left: 3px solid #13ec37;
+            box-shadow: inset 10px 0 20px -10px rgba(19, 236, 55, 0.1);
+        }.accordion-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease-out, padding-top 0.4s ease-out, padding-bottom 0.4s ease-out;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+        .accordion-content.expanded {
+            max-height: 500px;padding-top: 1.5rem;padding-bottom: 1.5rem;}
+        .accordion-header-expanded {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            background: linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 0%, transparent 100%);
+        }
+    </style>
+</head>
+<body class="flex h-screen w-full bg-background-dark text-white selection:bg-primary selection:text-black">
+<div class="fixed inset-0 pointer-events-none z-0 bg-grid-pattern opacity-50"></div>
+<div class="fixed inset-0 pointer-events-none z-0 bg-cinematic-gradient"></div>
+<div class="fixed top-[-10%] right-[-5%] w-[600px] h-[600px] bg-primary/10 rounded-full blur-[100px] pointer-events-none z-0 animate-pulse"></div>
+<aside class="relative z-20 flex w-72 flex-col justify-between glass-sidebar h-full shrink-0 transition-all duration-300 opacity-40 hover:opacity-100">
+<div class="flex flex-col">
+<div class="p-8 pb-10">
+<div class="flex items-center gap-3">
+<div class="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 text-primary ring-1 ring-primary/30 shadow-[0_0_15px_rgba(19,236,55,0.2)]">
+<span class="material-symbols-outlined text-2xl">radar</span>
+</div>
+<div>
+<h1 class="text-white text-lg font-black tracking-wider leading-none">LIQUIDITY</h1>
+<h2 class="text-primary text-xs font-bold tracking-[0.2em] leading-tight">SCANNER</h2>
+</div>
+</div>
+</div>
+<div class="flex flex-col gap-8 pr-4 overflow-y-auto custom-scrollbar max-h-[calc(100vh-200px)]">
+<div class="flex flex-col gap-1">
+<p class="px-6 text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-2">Market Data</p>
+<a class="flex items-center gap-4 px-6 py-3 bg-[#13ec37]/10 border-l-[3px] border-[#13ec37] rounded-r-lg text-white transition-all" href="/monitor/se">
+<span class="material-symbols-outlined">candlestick_chart</span>
+<span class="text-sm font-medium">SuperEngulfing</span>
+</a>
+<a class="group flex items-center gap-4 px-6 py-3 border-l-[3px] border-transparent rounded-r-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all" href="/monitor/bias">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors">timeline</span>
+<span class="text-sm font-medium">Bias Shifts</span>
+</a>
+<a class="group flex items-center gap-4 px-6 py-3 border-l-[3px] border-transparent rounded-r-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all" href="/monitor/rsi">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors">hub</span>
+<span class="text-sm font-medium">RSI Divergence</span>
+</a>
+</div>
+<div class="flex flex-col gap-1">
+<p class="px-6 text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-2">Execution Mode</p>
+<a class="group flex items-center gap-4 px-6 py-3 border-l-[3px] border-transparent rounded-r-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors">trending_up</span>
+<span class="text-sm font-medium">Trend Align</span>
+</a>
+<a class="group flex items-center gap-4 px-6 py-3 border-l-[3px] border-transparent rounded-r-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors">rotate_right</span>
+<span class="text-sm font-medium">Struct. Reversal</span>
+</a>
+</div>
+<div class="flex flex-col gap-1">
+<p class="px-6 text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-2">Tools</p>
+<a class="group flex items-center gap-4 px-6 py-3 border-l-[3px] border-transparent rounded-r-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors">science</span>
+<span class="text-sm font-medium">Risk Lab</span>
+</a>
+<a class="group flex items-center gap-4 px-6 py-3 border-l-[3px] border-transparent rounded-r-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all" href="#">
+<span class="material-symbols-outlined group-hover:text-primary transition-colors">settings</span>
+<span class="text-sm font-medium">Settings</span>
+</a>
+</div>
+</div>
+</div>
+<div class="p-6 border-t border-white/5">
+<div class="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer transition-colors border border-white/5 shadow-lg">
+<div class="w-10 h-10 rounded-full bg-cover bg-center ring-2 ring-white/10" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuCC03HSHKNWIspEdpidsfAnP4J86f-9FEPXD8ncl-rRLrUTSAV4q2mgjztRMXQPjG8Vfjq4TzfTahFvqt7lxQfz0BVHJK9HNPN497hZWqBNeWXPHu136R_-fuChr99F4OEWydvM6GiRLZg5ycUsp_Id-zU9f3Kmv_J6cRALz4cdto6L6zsIw2isMTbVpQeVKPiGZiO0z2KpR3Rn3ynMk7ORau9_3lIMP3pSsPlenx3x5SJLfvA5ASmfyCRcZ8iIOX4ILgfCG4BYyjU3");'></div>
+<div class="flex flex-col">
+<span class="text-sm font-bold text-white">Alex Trader</span>
+<span class="text-[10px] text-primary font-mono tracking-wider">PRO PLAN</span>
+</div>
+<span class="material-symbols-outlined text-gray-500 text-sm ml-auto">more_vert</span>
+</div>
+</div>
+</aside>
+<main class="relative z-10 flex flex-col flex-1 h-full overflow-hidden">
+<header class="flex items-center justify-between px-8 py-6 shrink-0 z-20">
+<div class="flex flex-col gap-1">
+<div class="flex items-center gap-2 text-xs font-medium text-primary/80 uppercase tracking-widest">
+<span class="w-2 h-2 bg-primary rounded-full animate-pulse shadow-[0_0_8px_#13ec37]"></span>
+                    System Online
+                </div>
+<h1 class="text-3xl font-black tracking-tighter text-white flex items-center gap-3 drop-shadow-lg">
+                    Monitor Overview
+                </h1>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden md:flex items-center bg-white/5 border border-white/10 rounded-full px-4 py-2 hover:bg-white/10 transition-colors cursor-pointer group">
+<span class="material-symbols-outlined text-gray-400 mr-2 group-hover:text-primary">search</span>
+<input class="bg-transparent border-none text-sm text-white focus:ring-0 placeholder:text-gray-500 w-48 p-0" placeholder="Quick Search..." type="text"/>
+<span class="text-[10px] font-mono text-gray-600 border border-gray-700 rounded px-1.5 py-0.5 ml-2">/</span>
+</div>
+<button class="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:text-primary hover:bg-primary/10 hover:border-primary/30 transition-all">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto custom-scrollbar p-8 pt-2">
+<div class="max-w-7xl mx-auto h-full flex flex-col pb-20">
+<div class="flex flex-col gap-4 relative isolate mb-16">
+<div class="glass-panel rounded-2xl relative z-30">
+<div class="p-6 flex items-center justify-between cursor-pointer accordion-toggle" data-target="superEngulfing-content" data-total-count="74">
+<a class="flex items-center gap-4 group" href="/monitor/se">
+<div class="w-12 h-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-[0_0_20px_rgba(19,236,55,0.15)] group-hover:shadow-[0_0_30px_rgba(19,236,55,0.3)] transition-all">
+<span class="material-symbols-outlined text-3xl">bolt</span>
+</div>
+<div class="flex flex-col">
+<h3 class="text-xl font-bold text-white group-hover:text-primary transition-colors">SuperEngulfing</h3>
+<span class="text-xs text-gray-400 tracking-wide font-mono">Strategy A-01</span>
+</div>
+</a>
+<div class="flex items-center gap-4">
+<span class="summary-count px-2 py-0.5 rounded bg-primary/20 text-primary text-[10px] font-bold border border-primary/20 animate-pulse">74 FOUND</span>
+<button class="toggle-button p-1.5 rounded text-gray-500 hover:text-white transition-colors hover:bg-white/5 active-button" title="Toggle View">
+<span class="material-symbols-outlined text-lg">expand_more</span>
+</button>
+</div>
+</div>
+<div class="accordion-content" id="superEngulfing-content">
+<div class="p-6 flex flex-col gap-3 overflow-y-auto custom-scrollbar">
+<a class="w-full flex justify-between items-center p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-primary/10 hover:border-primary/30 transition-all cursor-pointer group" href="/monitor/se/4h">
+<div class="flex items-center gap-3">
+<span class="px-2.5 py-1 rounded-md text-xs font-bold bg-primary/10 text-primary border border-primary/20 font-mono group-hover:bg-primary group-hover:text-black transition-colors">4H</span>
+<span class="text-sm text-gray-400 group-hover:text-white transition-colors">Mid-Term Trend</span>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-white font-mono font-bold">40 Found</span>
+<span class="material-symbols-outlined text-sm text-gray-600 group-hover:text-primary">chevron_right</span>
+</div>
+</a>
+<a class="w-full flex justify-between items-center p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-primary/10 hover:border-primary/30 transition-all cursor-pointer group" href="/monitor/se/1d">
+<div class="flex items-center gap-3">
+<span class="px-2.5 py-1 rounded-md text-xs font-bold bg-primary/10 text-primary border border-primary/20 font-mono group-hover:bg-primary group-hover:text-black transition-colors">1D</span>
+<span class="text-sm text-gray-400 group-hover:text-white transition-colors">Daily Structure</span>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-white font-mono font-bold">24 Found</span>
+<span class="material-symbols-outlined text-sm text-gray-600 group-hover:text-primary">chevron_right</span>
+</div>
+</a>
+<a class="w-full flex justify-between items-center p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-primary/10 hover:border-primary/30 transition-all cursor-pointer group" href="/monitor/se/1w">
+<div class="flex items-center gap-3">
+<span class="px-2.5 py-1 rounded-md text-xs font-bold bg-primary/10 text-primary border border-primary/20 font-mono group-hover:bg-primary group-hover:text-black transition-colors">1W</span>
+<span class="text-sm text-gray-400 group-hover:text-white transition-colors">Macro View</span>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-white font-mono font-bold">10 Found</span>
+<span class="material-symbols-outlined text-sm text-gray-600 group-hover:text-primary">chevron_right</span>
+</div>
+</a>
+</div>
+</div>
+</div>
+<div class="glass-panel rounded-2xl relative z-20">
+<div class="p-6 flex items-center justify-between cursor-pointer accordion-toggle" data-target="dailyBias-content" data-total-count="11">
+<a class="flex items-center gap-4 group" href="/monitor/bias">
+<div class="w-12 h-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-[0_0_20px_rgba(19,236,55,0.15)] group-hover:shadow-[0_0_30px_rgba(19,236,55,0.3)] transition-all">
+<span class="material-symbols-outlined text-3xl">explore</span>
+</div>
+<div class="flex flex-col">
+<h3 class="text-xl font-bold text-white group-hover:text-primary transition-colors">Daily Bias</h3>
+<span class="text-xs text-gray-400 tracking-wide font-mono">Strategy B-04</span>
+</div>
+</a>
+<div class="flex items-center gap-4">
+<span class="summary-count px-2 py-0.5 rounded bg-primary/20 text-primary text-[10px] font-bold border border-primary/20 animate-pulse">11 FOUND</span>
+<button class="toggle-button p-1.5 rounded text-gray-500 hover:text-white transition-colors hover:bg-white/5 active-button" title="Toggle View">
+<span class="material-symbols-outlined text-lg">expand_more</span>
+</button>
+</div>
+</div>
+<div class="accordion-content" id="dailyBias-content">
+<div class="p-6 flex-1 flex flex-col gap-3 custom-scrollbar">
+<a class="w-full flex justify-between items-center p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-primary/10 hover:border-primary/30 transition-all cursor-pointer group" href="/monitor/bias/1h">
+<div class="flex items-center gap-3">
+<span class="px-2.5 py-1 rounded-md text-xs font-bold bg-primary/10 text-primary border border-primary/20 font-mono group-hover:bg-primary group-hover:text-black transition-colors">1H</span>
+<span class="text-sm text-gray-400 group-hover:text-white transition-colors">Short-Term Bias</span>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-white font-mono font-bold">5 Found</span>
+<span class="material-symbols-outlined text-sm text-gray-600 group-hover:text-primary">chevron_right</span>
+</div>
+</a>
+<a class="w-full flex justify-between items-center p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-primary/10 hover:border-primary/30 transition-all cursor-pointer group" href="/monitor/bias/4h">
+<div class="flex items-center gap-3">
+<span class="px-2.5 py-1 rounded-md text-xs font-bold bg-primary/10 text-primary border border-primary/20 font-mono group-hover:bg-primary group-hover:text-black transition-colors">4H</span>
+<span class="text-sm text-gray-400 group-hover:text-white transition-colors">Mid-Term Bias</span>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-white font-mono font-bold">4 Found</span>
+<span class="material-symbols-outlined text-sm text-gray-600 group-hover:text-primary">chevron_right</span>
+</div>
+</a>
+<a class="w-full flex justify-between items-center p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-primary/10 hover:border-primary/30 transition-all cursor-pointer group" href="/monitor/bias/1d">
+<div class="flex items-center gap-3">
+<span class="px-2.5 py-1 rounded-md text-xs font-bold bg-primary/10 text-primary border border-primary/20 font-mono group-hover:bg-primary group-hover:text-black transition-colors">1D</span>
+<span class="text-sm text-gray-400 group-hover:text-white transition-colors">Daily Bias</span>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-white font-mono font-bold">2 Found</span>
+<span class="material-symbols-outlined text-sm text-gray-600 group-hover:text-primary">chevron_right</span>
+</div>
+</a>
+</div>
+</div>
+</div>
+<div class="glass-panel rounded-2xl relative z-10">
+<div class="p-6 flex items-center justify-between cursor-pointer accordion-toggle" data-target="rsiDivergence-content" data-total-count="21">
+<a class="flex items-center gap-4 group" href="/monitor/rsi">
+<div class="w-12 h-12 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-[0_0_20px_rgba(19,236,55,0.15)] group-hover:shadow-[0_0_30px_rgba(19,236,55,0.3)] transition-all">
+<span class="material-symbols-outlined text-3xl">show_chart</span>
+</div>
+<div class="flex flex-col">
+<h3 class="text-xl font-bold text-white group-hover:text-primary transition-colors">RSI Divergence</h3>
+<span class="text-xs text-gray-400 tracking-wide font-mono">Strategy C-12</span>
+</div>
+</a>
+<div class="flex items-center gap-4">
+<span class="summary-count px-2 py-0.5 rounded bg-primary/20 text-primary text-[10px] font-bold border border-primary/20 animate-pulse">21 FOUND</span>
+<button class="toggle-button p-1.5 rounded text-gray-500 hover:text-white transition-colors hover:bg-white/5 active-button" title="Toggle View">
+<span class="material-symbols-outlined text-lg">expand_more</span>
+</button>
+</div>
+</div>
+<div class="accordion-content" id="rsiDivergence-content">
+<div class="p-6 flex flex-col gap-3 overflow-y-auto custom-scrollbar">
+<a class="w-full flex justify-between items-center p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-primary/10 hover:border-primary/30 transition-all cursor-pointer group" href="/monitor/rsi/15m">
+<div class="flex items-center gap-3">
+<span class="px-2.5 py-1 rounded-md text-xs font-bold bg-primary/10 text-primary border border-primary/20 font-mono group-hover:bg-primary group-hover:text-black transition-colors">15M</span>
+<span class="text-sm text-gray-400 group-hover:text-white transition-colors">Quick Scalp</span>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-white font-mono font-bold">12 Found</span>
+<span class="material-symbols-outlined text-sm text-gray-600 group-hover:text-primary">chevron_right</span>
+</div>
+</a>
+<a class="w-full flex justify-between items-center p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-primary/10 hover:border-primary/30 transition-all cursor-pointer group" href="/monitor/rsi/1h">
+<div class="flex items-center gap-3">
+<span class="px-2.5 py-1 rounded-md text-xs font-bold bg-primary/10 text-primary border border-primary/20 font-mono group-hover:bg-primary group-hover:text-black transition-colors">1H</span>
+<span class="text-sm text-gray-400 group-hover:text-white transition-colors">Scalping</span>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-white font-mono font-bold">3 Found</span>
+<span class="material-symbols-outlined text-sm text-gray-600 group-hover:text-primary">chevron_right</span>
+</div>
+</a>
+<a class="w-full flex justify-between items-center p-4 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-primary/10 hover:border-primary/30 transition-all cursor-pointer group" href="/monitor/rsi/4h">
+<div class="flex items-center gap-3">
+<span class="px-2.5 py-1 rounded-md text-xs font-bold bg-primary/10 text-primary border border-primary/20 font-mono group-hover:bg-primary group-hover:text-black transition-colors">4H</span>
+<span class="text-sm text-gray-400 group-hover:text-white transition-colors">Swing Setups</span>
+</div>
+<div class="flex items-center gap-3">
+<span class="text-white font-mono font-bold">6 Found</span>
+<span class="material-symbols-outlined text-sm text-gray-600 group-hover:text-primary">chevron_right</span>
+</div>
+</a>
+</div>
+</div>
+</div>
+</div>
+<div class="mb-12">
+<h1 class="text-3xl font-black tracking-tighter text-white flex items-center gap-3 drop-shadow-lg mb-8">
+                        My Strategies
+                    </h1>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+<div class="widget-card glass-panel rounded-2xl flex flex-col h-[200px] relative z-10 p-6 group cursor-pointer hover:bg-white/5 transition-all">
+<div class="flex items-start justify-between mb-auto">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary group-hover:shadow-[0_0_15px_rgba(19,236,55,0.2)] transition-all">
+<span class="material-symbols-outlined text-xl">star</span>
+</div>
+<div>
+<h3 class="text-lg font-bold text-white group-hover:text-primary transition-colors">Strategy 1</h3>
+<span class="text-[10px] text-gray-400 tracking-wide font-mono">CUSTOM-01</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-gray-600 text-xl group-hover:text-white transition-colors">arrow_outward</span>
+</div>
+<div class="flex items-end justify-between mt-4">
+<div>
+<span class="block text-2xl font-black text-white tracking-tight">12</span>
+<span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Signals Found</span>
+</div>
+<div class="h-8 w-16 bg-primary/10 rounded flex items-center justify-center border border-primary/20 opacity-60">
+<svg class="w-full h-full text-primary p-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 50 20">
+<path d="M0 10 L10 5 L20 15 L30 5 L40 10 L50 8"></path>
+</svg>
+</div>
+</div>
+</div>
+<div class="widget-card glass-panel rounded-2xl flex flex-col h-[200px] relative z-10 p-6 group cursor-pointer hover:bg-white/5 transition-all">
+<div class="flex items-start justify-between mb-auto">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary group-hover:shadow-[0_0_15px_rgba(19,236,55,0.2)] transition-all">
+<span class="material-symbols-outlined text-xl">grid_view</span>
+</div>
+<div>
+<h3 class="text-lg font-bold text-white group-hover:text-primary transition-colors">Strategy 2</h3>
+<span class="text-[10px] text-gray-400 tracking-wide font-mono">CUSTOM-02</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-gray-600 text-xl group-hover:text-white transition-colors">arrow_outward</span>
+</div>
+<div class="flex items-end justify-between mt-4">
+<div>
+<span class="block text-2xl font-black text-white tracking-tight">5</span>
+<span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Signals Found</span>
+</div>
+<div class="h-8 w-16 bg-primary/10 rounded flex items-center justify-center border border-primary/20 opacity-60">
+<svg class="w-full h-full text-primary p-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 50 20">
+<path d="M0 15 L10 10 L20 15 L30 5 L40 10 L50 12"></path>
+</svg>
+</div>
+</div>
+</div>
+<div class="widget-card glass-panel rounded-2xl flex flex-col h-[200px] relative z-10 p-6 group cursor-pointer hover:bg-white/5 transition-all">
+<div class="flex items-start justify-between mb-auto">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary group-hover:shadow-[0_0_15px_rgba(19,236,55,0.2)] transition-all">
+<span class="material-symbols-outlined text-xl">candlestick_chart</span>
+</div>
+<div>
+<h3 class="text-lg font-bold text-white group-hover:text-primary transition-colors">Strategy 3</h3>
+<span class="text-[10px] text-gray-400 tracking-wide font-mono">CUSTOM-03</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-gray-600 text-xl group-hover:text-white transition-colors">arrow_outward</span>
+</div>
+<div class="flex items-end justify-between mt-4">
+<div>
+<span class="block text-2xl font-black text-white tracking-tight">8</span>
+<span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Signals Found</span>
+</div>
+<div class="h-8 w-16 bg-primary/10 rounded flex items-center justify-center border border-primary/20 opacity-60">
+<svg class="w-full h-full text-primary p-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 50 20">
+<path d="M0 10 L15 15 L30 5 L40 12 L50 10"></path>
+</svg>
+</div>
+</div>
+</div>
+<div class="widget-card glass-panel rounded-2xl flex flex-col h-[200px] relative z-10 p-6 group cursor-pointer hover:bg-white/5 transition-all">
+<div class="flex items-start justify-between mb-auto">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary group-hover:shadow-[0_0_15px_rgba(19,236,55,0.2)] transition-all">
+<span class="material-symbols-outlined text-xl">timeline</span>
+</div>
+<div>
+<h3 class="text-lg font-bold text-white group-hover:text-primary transition-colors">Strategy 4</h3>
+<span class="text-[10px] text-gray-400 tracking-wide font-mono">CUSTOM-04</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-gray-600 text-xl group-hover:text-white transition-colors">arrow_outward</span>
+</div>
+<div class="flex items-end justify-between mt-4">
+<div>
+<span class="block text-2xl font-black text-white tracking-tight">24</span>
+<span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Signals Found</span>
+</div>
+<div class="h-8 w-16 bg-primary/10 rounded flex items-center justify-center border border-primary/20 opacity-60">
+<svg class="w-full h-full text-primary p-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 50 20">
+<path d="M0 18 L10 12 L20 16 L30 8 L40 14 L50 6"></path>
+</svg>
+</div>
+</div>
+</div>
+<div class="widget-card glass-panel rounded-2xl flex flex-col h-[200px] relative z-10 p-6 group cursor-pointer hover:bg-white/5 transition-all">
+<div class="flex items-start justify-between mb-auto">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary group-hover:shadow-[0_0_15px_rgba(19,236,55,0.2)] transition-all">
+<span class="material-symbols-outlined text-xl">query_stats</span>
+</div>
+<div>
+<h3 class="text-lg font-bold text-white group-hover:text-primary transition-colors">Strategy 5</h3>
+<span class="text-[10px] text-gray-400 tracking-wide font-mono">CUSTOM-05</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-gray-600 text-xl group-hover:text-white transition-colors">arrow_outward</span>
+</div>
+<div class="flex items-end justify-between mt-4">
+<div>
+<span class="block text-2xl font-black text-white tracking-tight">3</span>
+<span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Signals Found</span>
+</div>
+<div class="h-8 w-16 bg-primary/10 rounded flex items-center justify-center border border-primary/20 opacity-60">
+<svg class="w-full h-full text-primary p-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 50 20">
+<path d="M0 10 L25 10 L50 5"></path>
+</svg>
+</div>
+</div>
+</div>
+<div class="widget-card glass-panel rounded-2xl flex flex-col h-[200px] relative z-10 p-6 group cursor-pointer hover:bg-white/5 transition-all">
+<div class="flex items-start justify-between mb-auto">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary group-hover:shadow-[0_0_15px_rgba(19,236,55,0.2)] transition-all">
+<span class="material-symbols-outlined text-xl">bubble_chart</span>
+</div>
+<div>
+<h3 class="text-lg font-bold text-white group-hover:text-primary transition-colors">Strategy 6</h3>
+<span class="text-[10px] text-gray-400 tracking-wide font-mono">CUSTOM-06</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-gray-600 text-xl group-hover:text-white transition-colors">arrow_outward</span>
+</div>
+<div class="flex items-end justify-between mt-4">
+<div>
+<span class="block text-2xl font-black text-white tracking-tight">0</span>
+<span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Signals Found</span>
+</div>
+<div class="h-8 w-16 bg-primary/10 rounded flex items-center justify-center border border-primary/20 opacity-60">
+<svg class="w-full h-full text-primary p-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 50 20">
+<path d="M0 10 L50 10"></path>
+</svg>
+</div>
+</div>
+</div>
+<div class="widget-card glass-panel rounded-2xl flex flex-col h-[200px] relative z-10 p-6 group cursor-pointer hover:bg-white/5 transition-all">
+<div class="flex items-start justify-between mb-auto">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary group-hover:shadow-[0_0_15px_rgba(19,236,55,0.2)] transition-all">
+<span class="material-symbols-outlined text-xl">ssid_chart</span>
+</div>
+<div>
+<h3 class="text-lg font-bold text-white group-hover:text-primary transition-colors">Strategy 7</h3>
+<span class="text-[10px] text-gray-400 tracking-wide font-mono">CUSTOM-07</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-gray-600 text-xl group-hover:text-white transition-colors">arrow_outward</span>
+</div>
+<div class="flex items-end justify-between mt-4">
+<div>
+<span class="block text-2xl font-black text-white tracking-tight">18</span>
+<span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Signals Found</span>
+</div>
+<div class="h-8 w-16 bg-primary/10 rounded flex items-center justify-center border border-primary/20 opacity-60">
+<svg class="w-full h-full text-primary p-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 50 20">
+<path d="M0 15 L10 15 L20 5 L30 15 L40 5 L50 10"></path>
+</svg>
+</div>
+</div>
+</div>
+<div class="widget-card glass-panel rounded-2xl flex flex-col h-[200px] relative z-10 p-6 group cursor-pointer hover:bg-white/5 transition-all">
+<div class="flex items-start justify-between mb-auto">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary group-hover:shadow-[0_0_15px_rgba(19,236,55,0.2)] transition-all">
+<span class="material-symbols-outlined text-xl">bar_chart</span>
+</div>
+<div>
+<h3 class="text-lg font-bold text-white group-hover:text-primary transition-colors">Strategy 8</h3>
+<span class="text-[10px] text-gray-400 tracking-wide font-mono">CUSTOM-08</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-gray-600 text-xl group-hover:text-white transition-colors">arrow_outward</span>
+</div>
+<div class="flex items-end justify-between mt-4">
+<div>
+<span class="block text-2xl font-black text-white tracking-tight">9</span>
+<span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Signals Found</span>
+</div>
+<div class="h-8 w-16 bg-primary/10 rounded flex items-center justify-center border border-primary/20 opacity-60">
+<svg class="w-full h-full text-primary p-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 50 20">
+<path d="M0 5 L10 10 L20 10 L30 15 L40 10 L50 15"></path>
+</svg>
+</div>
+</div>
+</div>
+<div class="widget-card glass-panel rounded-2xl flex flex-col h-[200px] relative z-10 p-6 group cursor-pointer hover:bg-white/5 transition-all">
+<div class="flex items-start justify-between mb-auto">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary group-hover:shadow-[0_0_15px_rgba(19,236,55,0.2)] transition-all">
+<span class="material-symbols-outlined text-xl">scatter_plot</span>
+</div>
+<div>
+<h3 class="text-lg font-bold text-white group-hover:text-primary transition-colors">Strategy 9</h3>
+<span class="text-[10px] text-gray-400 tracking-wide font-mono">CUSTOM-09</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-gray-600 text-xl group-hover:text-white transition-colors">arrow_outward</span>
+</div>
+<div class="flex items-end justify-between mt-4">
+<div>
+<span class="block text-2xl font-black text-white tracking-tight">14</span>
+<span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Signals Found</span>
+</div>
+<div class="h-8 w-16 bg-primary/10 rounded flex items-center justify-center border border-primary/20 opacity-60">
+<svg class="w-full h-full text-primary p-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 50 20">
+<path d="M0 10 L10 5 L20 10 L30 15 L40 5 L50 10"></path>
+</svg>
+</div>
+</div>
+</div>
+<div class="widget-card glass-panel rounded-2xl flex flex-col h-[200px] relative z-10 p-6 group cursor-pointer hover:bg-white/5 transition-all">
+<div class="flex items-start justify-between mb-auto">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary group-hover:shadow-[0_0_15px_rgba(19,236,55,0.2)] transition-all">
+<span class="material-symbols-outlined text-xl">pie_chart</span>
+</div>
+<div>
+<h3 class="text-lg font-bold text-white group-hover:text-primary transition-colors">Strategy 10</h3>
+<span class="text-[10px] text-gray-400 tracking-wide font-mono">CUSTOM-10</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-gray-600 text-xl group-hover:text-white transition-colors">arrow_outward</span>
+</div>
+<div class="flex items-end justify-between mt-4">
+<div>
+<span class="block text-2xl font-black text-white tracking-tight">4</span>
+<span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Signals Found</span>
+</div>
+<div class="h-8 w-16 bg-primary/10 rounded flex items-center justify-center border border-primary/20 opacity-60">
+<svg class="w-full h-full text-primary p-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 50 20">
+<path d="M0 15 L50 5"></path>
+</svg>
+</div>
+</div>
+</div>
+<div class="widget-card glass-panel rounded-2xl flex flex-col h-[200px] relative z-10 p-6 group cursor-pointer hover:bg-white/5 transition-all">
+<div class="flex items-start justify-between mb-auto">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary group-hover:shadow-[0_0_15px_rgba(19,236,55,0.2)] transition-all">
+<span class="material-symbols-outlined text-xl">donut_large</span>
+</div>
+<div>
+<h3 class="text-lg font-bold text-white group-hover:text-primary transition-colors">Strategy 11</h3>
+<span class="text-[10px] text-gray-400 tracking-wide font-mono">CUSTOM-11</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-gray-600 text-xl group-hover:text-white transition-colors">arrow_outward</span>
+</div>
+<div class="flex items-end justify-between mt-4">
+<div>
+<span class="block text-2xl font-black text-white tracking-tight">7</span>
+<span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Signals Found</span>
+</div>
+<div class="h-8 w-16 bg-primary/10 rounded flex items-center justify-center border border-primary/20 opacity-60">
+<svg class="w-full h-full text-primary p-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 50 20">
+<path d="M0 10 L15 15 L25 5 L35 15 L50 10"></path>
+</svg>
+</div>
+</div>
+</div>
+<div class="widget-card glass-panel rounded-2xl flex flex-col h-[200px] relative z-10 p-6 group cursor-pointer hover:bg-white/5 transition-all">
+<div class="flex items-start justify-between mb-auto">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary group-hover:shadow-[0_0_15px_rgba(19,236,55,0.2)] transition-all">
+<span class="material-symbols-outlined text-xl">multiline_chart</span>
+</div>
+<div>
+<h3 class="text-lg font-bold text-white group-hover:text-primary transition-colors">Strategy 12</h3>
+<span class="text-[10px] text-gray-400 tracking-wide font-mono">CUSTOM-12</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-gray-600 text-xl group-hover:text-white transition-colors">arrow_outward</span>
+</div>
+<div class="flex items-end justify-between mt-4">
+<div>
+<span class="block text-2xl font-black text-white tracking-tight">2</span>
+<span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Signals Found</span>
+</div>
+<div class="h-8 w-16 bg-primary/10 rounded flex items-center justify-center border border-primary/20 opacity-60">
+<svg class="w-full h-full text-primary p-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 50 20">
+<path d="M0 15 L10 10 L20 15 L30 10 L40 15 L50 12"></path>
+</svg>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-8 flex justify-center opacity-30">
+<span class="text-xs font-mono text-primary uppercase tracking-[0.5em]">System Operational • V2.4.0</span>
+</div>
+</div>
+</div>
+</main>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.accordion-toggle').forEach(toggle => {
+            toggle.addEventListener('click', (event) => {
+                // Prevent clicking the link from navigating if it's not the actual link icon/text
+                if (!event.target.closest('a')) {
+                    event.preventDefault();
+                }
+                const targetId = toggle.dataset.target;
+                const content = document.getElementById(targetId);
+                const toggleButton = toggle.querySelector('.toggle-button .material-symbols-outlined');
+                if (content) {
+                    const isExpanded = content.classList.contains('expanded');
+                    // Close all other accordions
+                    document.querySelectorAll('.accordion-content.expanded').forEach(expandedContent => {
+                        if (expandedContent.id !== targetId) {
+                            expandedContent.classList.remove('expanded');
+                            expandedContent.closest('.glass-panel').querySelector('.accordion-toggle').classList.remove('accordion-header-expanded');
+                            expandedContent.closest('.glass-panel').querySelector('.toggle-button .material-symbols-outlined').textContent = 'expand_more';
+                        }
+                    });
+                    // Toggle current accordion
+                    content.classList.toggle('expanded');
+                    toggle.classList.toggle('accordion-header-expanded');
+                    if (content.classList.contains('expanded')) {
+                        toggleButton.textContent = 'expand_less';
+                    } else {
+                        toggleButton.textContent = 'expand_more';
+                    }
+                }
+            });
+        });
+        // Initially collapse all accordions.
+        // We ensure content is hidden and the toggle button shows 'expand_more'.
+        document.querySelectorAll('.accordion-content').forEach(content => {
+            content.classList.remove('expanded');
+        });
+        document.querySelectorAll('.accordion-toggle').forEach(toggle => {
+            toggle.classList.remove('accordion-header-expanded');
+            toggle.querySelector('.toggle-button .material-symbols-outlined').textContent = 'expand_more';
+        });
+    });
+</script>
+
+</body></html>

@@ -1,0 +1,191 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String       @id @default(uuid())
+  email         String       @unique
+  passwordHash  String       @map("password_hash")
+  name          String?
+  subscriptionId String?     @map("subscription_id")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  
+  subscription  Subscription? @relation(fields: [subscriptionId], references: [id])
+  strategies    Strategy[]
+  signalAlerts  SignalAlert[]
+  courseProgress CourseProgress[]
+  
+  @@map("users")
+  @@index([email])
+}
+
+model Subscription {
+  id        String   @id @default(uuid())
+  name      String
+  price     Decimal  @db.Decimal(10, 2)
+  features  Json     // Features as JSON
+  limits    Json     // Limits as JSON
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  users     User[]
+  
+  @@map("subscriptions")
+}
+
+model Signal {
+  id          String   @id @default(uuid())
+  strategyType String  @map("strategy_type") // RSI_DIVERGENCE, SUPER_ENGULFING, ICT_BIAS
+  symbol      String
+  timeframe   String   // 5m, 15m, 1h, 4h, 1d, 1w
+  signalType  String   @map("signal_type") // BUY, SELL
+  price       Decimal  @db.Decimal(20, 8)
+  detectedAt  DateTime @default(now()) @map("detected_at")
+  status      String   @default("ACTIVE") // ACTIVE, EXPIRED, FILLED
+  metadata    Json?    // Additional signal data
+  
+  alerts      SignalAlert[]
+  
+  @@map("signals")
+  @@index([symbol, timeframe, detectedAt])
+  @@index([strategyType, detectedAt])
+  @@index([status])
+}
+
+model Candle {
+  id           String   @id @default(uuid())
+  symbol       String
+  timeframe    String
+  openTime     DateTime @map("open_time")
+  open         Decimal  @db.Decimal(20, 8)
+  high         Decimal  @db.Decimal(20, 8)
+  low          Decimal  @db.Decimal(20, 8)
+  close        Decimal  @db.Decimal(20, 8)
+  volume       Decimal  @db.Decimal(30, 8)
+  quoteVolume Decimal?  @db.Decimal(30, 8) @map("quote_volume")
+  
+  @@map("candles")
+  @@unique([symbol, timeframe, openTime])
+  @@index([symbol, timeframe, openTime])
+  @@index([openTime])
+}
+
+model Strategy {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  name        String
+  strategyType String  @map("strategy_type")
+  parameters  Json     // Strategy parameters as JSON
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("strategies")
+  @@index([userId])
+}
+
+model SignalAlert {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  signalId  String   @map("signal_id")
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signal    Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  
+  @@map("signal_alerts")
+  @@index([userId, readAt])
+  @@index([signalId])
+}
+
+model Course {
+  id              String   @id @default(uuid())
+  title           String
+  description     String
+  fullDescription String   @map("full_description") @db.Text
+  category        String   // beginner, intermediate, advanced
+  level           String   // Beginner, Intermediate, Advanced
+  duration        String
+  price           String   // Free, Premium
+  instructor      String
+  instructorBio   String   @map("instructor_bio") @db.Text
+  rating          Decimal  @default(0) @db.Decimal(3, 2)
+  students        Int      @default(0)
+  tags            Json     @default("[]")
+  whatYouWillLearn Json    @default("[]") @map("what_you_will_learn")
+  requirements    Json     @default("[]")
+  published       Boolean  @default(false)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  lessons         Lesson[]
+  progress        CourseProgress[]
+  
+  @@map("courses")
+  @@index([category])
+  @@index([published])
+}
+
+model Lesson {
+  id          String   @id @default(uuid())
+  courseId    String   @map("course_id")
+  title       String
+  description String?  @db.Text
+  type        String   // video, reading, quiz
+  duration    String
+  content     Json     @default("{}")  // Video URL, text content, quiz questions, etc.
+  order       Int      @default(0)
+  locked      Boolean  @default(false)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  progress    CourseProgress[]
+  
+  @@map("lessons")
+  @@index([courseId, order])
+}
+
+model CourseProgress {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  courseId  String   @map("course_id")
+  lessonId  String?  @map("lesson_id")
+  completed Boolean  @default(false)
+  progress  Int      @default(0) // 0-100
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lesson    Lesson?  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, courseId, lessonId])
+  @@map("course_progress")
+  @@index([userId])
+  @@index([courseId])
+}
+
+model Content {
+  id        String   @id @default(uuid())
+  type      String   // article, news, notification
+  title     String
+  content   String   @db.Text
+  published Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@map("content")
+  @@index([type, published])
+}
