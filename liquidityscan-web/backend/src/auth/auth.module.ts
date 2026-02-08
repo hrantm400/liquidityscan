@@ -1,30 +1,49 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { AuthService } from './auth.service';
+import { ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
-import { JwtStrategy } from './jwt.strategy';
-import { GoogleStrategy } from './google.strategy';
+import { AuthService } from './auth.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { JwtStrategy } from './strategies/jwt.strategy';
+import { GoogleStrategy } from './strategies/google.strategy';
+
+// Функция для создания условных провайдеров
+function getAuthProviders(): any[] {
+  const baseProviders: any[] = [AuthService, JwtStrategy];
+  
+  // Проверяем наличие Google OAuth credentials через переменные окружения
+  // Это делается на этапе загрузки модуля, поэтому используем process.env напрямую
+  const hasGoogleCredentials = 
+    process.env.GOOGLE_CLIENT_ID && 
+    process.env.GOOGLE_CLIENT_SECRET;
+  
+  if (hasGoogleCredentials) {
+    baseProviders.push(GoogleStrategy);
+  } else {
+    console.log('⚠️  Google OAuth credentials not found. Google login will be disabled.');
+    console.log('   To enable Google OAuth, set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env file');
+  }
+  
+  return baseProviders;
+}
 
 @Module({
   imports: [
     PrismaModule,
-    PassportModule,
+    PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
-      imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get('JWT_SECRET'),
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: config.get<string>('JWT_SECRET') || 'your-secret-key',
         signOptions: {
-          expiresIn: configService.get('JWT_EXPIRES_IN') || '1h', // Увеличено с 15m до 1h
+          expiresIn: config.get<string>('JWT_EXPIRES_IN') || '7d',
         },
       }),
-      inject: [ConfigService],
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, GoogleStrategy],
-  exports: [AuthService, JwtStrategy],
+  providers: getAuthProviders(),
+  exports: [AuthService],
 })
 export class AuthModule {}

@@ -2,190 +2,191 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
-  id            String       @id @default(uuid())
-  email         String       @unique
-  passwordHash  String       @map("password_hash")
-  name          String?
-  subscriptionId String?     @map("subscription_id")
-  createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt @map("updated_at")
-  
-  subscription  Subscription? @relation(fields: [subscriptionId], references: [id])
-  strategies    Strategy[]
-  signalAlerts  SignalAlert[]
-  courseProgress CourseProgress[]
-  
+  id                  String    @id @default(uuid())
+  email               String    @unique
+  name                String?
+  password            String?
+  googleId            String?   @unique
+  avatar              String?
+  isAdmin             Boolean   @default(false)
+  subscriptionId      String?
+  subscription        Subscription? @relation(fields: [subscriptionId], references: [id])
+  subscriptionExpiresAt DateTime?
+  subscriptionStatus  String    @default("none") // none, active, expired, cancelled
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  payments            Payment[]
+  refreshTokens       RefreshToken[]
+  userSubscriptions   UserSubscription[]
+
   @@map("users")
-  @@index([email])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("refresh_tokens")
+}
+
+model Category {
+  id          String   @id @default(uuid())
+  name        String
+  slug        String   @unique
+  description String?
+  icon        String?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("categories")
 }
 
 model Subscription {
-  id        String   @id @default(uuid())
-  name      String
-  price     Decimal  @db.Decimal(10, 2)
-  features  Json     // Features as JSON
-  limits    Json     // Limits as JSON
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  
-  users     User[]
-  
+  id            String   @id @default(uuid())
+  name          String
+  description   String?  @db.Text
+  tier          String   // SCOUT, APPRENTICE, SPECIALIST, STRATEGIST, GODFATHER
+  tierNumber    Int      @default(0) // 0-4 for sorting
+  price         Decimal  @db.Decimal(10, 2) // monthly price (legacy, use priceMonthly)
+  priceMonthly  Decimal  @db.Decimal(10, 2) // monthly price
+  priceYearly   Decimal? @db.Decimal(10, 2) // yearly price (optional)
+  duration      Int      @default(30) // in days
+  markets       Json?    // Available markets: ["crypto", "forex", "indices", "commodities"]
+  pairsLimit    Int?     // null = unlimited
+  timeframes    Json?    // Available timeframes: ["15m", "1H", "4H", "Daily"]
+  signalTypes   Json?    // Signal types: ["Standard", "REV+", "RUN+"]
+  features      Json?    // Array of features
+  limits        Json?    // Additional limits configuration
+  isPopular     Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  users         User[]
+  courses       Course[]
+  chapterSubscriptions ChapterSubscription[]
+  userSubscriptions UserSubscription[]
+
   @@map("subscriptions")
 }
 
-model Signal {
-  id          String   @id @default(uuid())
-  strategyType String  @map("strategy_type") // RSI_DIVERGENCE, SUPER_ENGULFING, ICT_BIAS
-  symbol      String
-  timeframe   String   // 5m, 15m, 1h, 4h, 1d, 1w
-  signalType  String   @map("signal_type") // BUY, SELL
-  price       Decimal  @db.Decimal(20, 8)
-  detectedAt  DateTime @default(now()) @map("detected_at")
-  status      String   @default("ACTIVE") // ACTIVE, EXPIRED, FILLED
-  metadata    Json?    // Additional signal data
-  
-  alerts      SignalAlert[]
-  
-  @@map("signals")
-  @@index([symbol, timeframe, detectedAt])
-  @@index([strategyType, detectedAt])
-  @@index([status])
+model Payment {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  subscriptionId String? // Link to subscription if this is a subscription payment
+  amount        Decimal  @db.Decimal(10, 2)
+  currency      String   @default("USD")
+  status        String   @default("pending") // pending, completed, failed, refunded
+  paymentMethod String?  // crypto, card, etc
+  paymentId     String?  // External payment ID (e.g., NOWPayments)
+  paymentUrl    String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("payments")
 }
 
-model Candle {
-  id           String   @id @default(uuid())
-  symbol       String
-  timeframe    String
-  openTime     DateTime @map("open_time")
-  open         Decimal  @db.Decimal(20, 8)
-  high         Decimal  @db.Decimal(20, 8)
-  low          Decimal  @db.Decimal(20, 8)
-  close        Decimal  @db.Decimal(20, 8)
-  volume       Decimal  @db.Decimal(30, 8)
-  quoteVolume Decimal?  @db.Decimal(30, 8) @map("quote_volume")
-  
-  @@map("candles")
-  @@unique([symbol, timeframe, openTime])
-  @@index([symbol, timeframe, openTime])
-  @@index([openTime])
-}
+model UserSubscription {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscriptionId String
+  subscription  Subscription @relation(fields: [subscriptionId], references: [id])
+  startDate     DateTime @default(now())
+  endDate       DateTime
+  status        String   @default("active") // active, expired, cancelled
+  paymentId     String?  // Link to payment
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-model Strategy {
-  id          String   @id @default(uuid())
-  userId      String   @map("user_id")
-  name        String
-  strategyType String  @map("strategy_type")
-  parameters  Json     // Strategy parameters as JSON
-  enabled     Boolean  @default(true)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@map("strategies")
-  @@index([userId])
-}
-
-model SignalAlert {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  signalId  String   @map("signal_id")
-  readAt    DateTime? @map("read_at")
-  createdAt DateTime @default(now()) @map("created_at")
-  
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  signal    Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
-  
-  @@map("signal_alerts")
-  @@index([userId, readAt])
-  @@index([signalId])
+  @@map("user_subscriptions")
 }
 
 model Course {
-  id              String   @id @default(uuid())
-  title           String
-  description     String
-  fullDescription String   @map("full_description") @db.Text
-  category        String   // beginner, intermediate, advanced
-  level           String   // Beginner, Intermediate, Advanced
-  duration        String
-  price           String   // Free, Premium
-  instructor      String
-  instructorBio   String   @map("instructor_bio") @db.Text
-  rating          Decimal  @default(0) @db.Decimal(3, 2)
-  students        Int      @default(0)
-  tags            Json     @default("[]")
-  whatYouWillLearn Json    @default("[]") @map("what_you_will_learn")
-  requirements    Json     @default("[]")
-  published       Boolean  @default(false)
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  id             String        @id @default(uuid())
+  title          String
+  description    String?       @db.Text
+  coverUrl       String?
+  difficulty     String        @default("Beginner") // Beginner, Intermediate, Advanced
+  price          Decimal       @default(0) @db.Decimal(10, 2)
+  isFree         Boolean       @default(false)
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
   
-  lessons         Lesson[]
-  progress        CourseProgress[]
+  chapters       Chapter[]
   
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
   @@map("courses")
-  @@index([category])
-  @@index([published])
+}
+
+model Chapter {
+  id             String        @id @default(uuid())
+  courseId       String
+  course         Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title          String
+  description    String?       @db.Text
+  coverUrl       String?
+  videoUrl       String?       // YouTube or Wistia preview video
+  difficulty     String        @default("Beginner") // Beginner, Intermediate, Advanced
+  price          Decimal       @default(0) @db.Decimal(10, 2)
+  isFree         Boolean       @default(true)
+  order          Int           @default(0)
+  
+  lessons        Lesson[]
+  subscriptions  ChapterSubscription[]
+  
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@map("chapters")
+}
+
+model ChapterSubscription {
+  id             String        @id @default(uuid())
+  chapterId      String
+  chapter        Chapter       @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  subscriptionId String
+  subscription   Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now())
+
+  @@unique([chapterId, subscriptionId])
+  @@map("chapter_subscriptions")
 }
 
 model Lesson {
-  id          String   @id @default(uuid())
-  courseId    String   @map("course_id")
-  title       String
-  description String?  @db.Text
-  type        String   // video, reading, quiz
-  duration    String
-  content     Json     @default("{}")  // Video URL, text content, quiz questions, etc.
-  order       Int      @default(0)
-  locked      Boolean  @default(false)
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  
-  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  progress    CourseProgress[]
-  
+  id            String   @id @default(uuid())
+  chapterId     String
+  chapter       Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?  @db.Text
+  videoUrl      String
+  videoProvider String? // youtube | wistia
+  coverUrl      String?
+  order         Int      @default(0)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
   @@map("lessons")
-  @@index([courseId, order])
-}
-
-model CourseProgress {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  courseId  String   @map("course_id")
-  lessonId  String?  @map("lesson_id")
-  completed Boolean  @default(false)
-  progress  Int      @default(0) // 0-100
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  lesson    Lesson?  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  
-  @@unique([userId, courseId, lessonId])
-  @@map("course_progress")
-  @@index([userId])
-  @@index([courseId])
-}
-
-model Content {
-  id        String   @id @default(uuid())
-  type      String   // article, news, notification
-  title     String
-  content   String   @db.Text
-  published Boolean  @default(false)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  
-  @@map("content")
-  @@index([type, published])
 }

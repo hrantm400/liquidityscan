@@ -32,7 +32,7 @@ export const Features: React.FC = () => {
              </div>
              
              {/* Abstract UI Representation */}
-             <div className="mt-8 bg-[#050505] border border-white/10 rounded-t-xl p-4 transform group-hover:-translate-y-1 transition-transform duration-500 opacity-90 group-hover:opacity-100 shadow-2xl relative overflow-hidden">
+             <div className="mt-8 bg-[#020202] border border-white/5 rounded-t-xl p-4 transform group-hover:-translate-y-2 transition-transform duration-500 opacity-80 group-hover:opacity-100 shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.8)] relative overflow-hidden">
                {/* Animated Scanning Bar */}
                <div className="absolute top-0 left-0 right-0 h-[2px] bg-primary/50 shadow-[0_0_10px_rgba(19,236,55,0.8)] animate-[scanDown_3s_ease-in-out_infinite] z-20"></div>
                
@@ -49,7 +49,7 @@ export const Features: React.FC = () => {
                    </div>
                  ))}
                  {/* Fading bottom */}
-                 <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-[#050505] to-transparent"></div>
+                 <div className="absolute bottom-0 left-0 right-0 h-10 bg-gradient-to-t from-[#020202] to-transparent"></div>
                </div>
              </div>
           </Card>
@@ -67,8 +67,9 @@ export const Features: React.FC = () => {
              </div>
              
              {/* Abstract Chart Representation */}
-             <div className="mt-8 relative h-[180px] w-full border-t border-l border-white/10 opacity-70 group-hover:opacity-100 transition-opacity bg-gradient-to-br from-white/[0.02] to-transparent rounded-tr-xl">
-               <svg className="w-full h-full overflow-visible" preserveAspectRatio="none">
+             <div className="mt-8 relative h-[180px] w-full border-t border-l border-white/5 opacity-80 group-hover:opacity-100 transition-opacity bg-gradient-to-br from-white/[0.03] to-transparent rounded-tr-xl overflow-hidden">
+               <div className="absolute inset-0 bg-grid-pattern opacity-10"></div>
+               <svg className="w-full h-full overflow-visible relative z-10" preserveAspectRatio="none">
                  <path d="M0,100 C50,80 100,120 150,60 S250,90 300,40 S400,20 500,0" fill="none" stroke="#3b82f6" strokeWidth="2" className="drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
                  <path d="M0,130 C50,110 100,150 150,90 S250,120 300,70 S400,50 500,30" fill="none" stroke="#9ca3af" strokeWidth="1" strokeDasharray="4 4" opacity="0.3" />
                  

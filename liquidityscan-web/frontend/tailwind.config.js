@@ -49,6 +49,8 @@ export default {
         'glow-md': '0 0 20px rgba(19, 236, 55, 0.3)',
         'glow-lg': '0 0 30px rgba(19, 236, 55, 0.4)',
         'glow-xl': '0 0 40px rgba(19, 236, 55, 0.5)',
+        'glow': '0 0 15px rgba(19, 236, 55, 0.15)',
+        'glow-intense': '0 0 25px rgba(19, 236, 55, 0.25)',
         'glow-light-sm': '0 2px 8px rgba(0, 0, 0, 0.08)',
         'glow-light-md': '0 4px 16px rgba(0, 0, 0, 0.12)',
         'glow-light-lg': '0 8px 24px rgba(0, 0, 0, 0.16)',

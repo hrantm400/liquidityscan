@@ -1,14 +1,15 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { AdminService } from './admin.service';
 import { AdminController } from './admin.controller';
-import { AdminGuard } from './guards/admin.guard';
+import { AdminService } from './admin.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AuthModule } from '../auth/auth.module';
+import { AdminGuard } from './guards/admin.guard';
 
 @Module({
-  imports: [PrismaModule, ConfigModule],
+  imports: [PrismaModule, AuthModule, ConfigModule],
   controllers: [AdminController],
   providers: [AdminService, AdminGuard],
-  exports: [AdminService, AdminGuard],
+  exports: [AdminService],
 })
 export class AdminModule {}

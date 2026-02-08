@@ -1,9 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
-import { useTheme } from '../contexts/ThemeContext';
 
 export function Sidebar() {
   const location = useLocation();
-  const { theme } = useTheme();
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -14,7 +12,6 @@ export function Sidebar() {
     { path: '/monitor/rsi', label: 'RSI Divergence', icon: 'hub' },
     { path: '/risk-calculator', label: 'Risk Calculator', icon: 'calculate' },
     { path: '/settings', label: 'Settings', icon: 'settings' },
-    { path: '/subscription', label: 'Subscription', icon: 'workspace_premium' },
   ];
 
   return (
@@ -38,11 +35,10 @@ export function Sidebar() {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`group flex items-center gap-4 px-6 py-3 border-l-[3px] rounded-r-lg transition-all ${
-                  isActive(item.path)
-                    ? 'bg-[#13ec37]/10 border-l-[#13ec37] text-white'
-                    : 'border-l-transparent text-gray-500 hover:text-white hover:bg-white/5'
-                }`}
+                className={`group flex items-center gap-4 px-6 py-3 border-l-[3px] rounded-r-lg transition-all ${isActive(item.path)
+                  ? 'bg-[#13ec37]/10 border-l-[#13ec37] text-white'
+                  : 'border-l-transparent text-gray-500 hover:text-white hover:bg-white/5'
+                  }`}
               >
                 <span className={`material-symbols-outlined ${!isActive(item.path) ? 'group-hover:text-primary transition-colors' : ''}`}>
                   {item.icon}

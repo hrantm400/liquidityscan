@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { authApi } from '../services/api';
+import { authApi } from '../services/userApi';
 
 /**
  * OAuth Handler Component
@@ -47,18 +47,37 @@ export function OAuthHandler() {
       setRefreshToken(urlRefreshToken);
       
       // 2. Fetch user profile from API
-      const profile = await authApi.getProfile();
-      
-      // 3. Store user in Zustand (persist middleware will save to localStorage automatically)
-      setUser(profile);
+      try {
+        const profile = await authApi.getProfile();
+        // 3. Store user in Zustand (persist middleware will save to localStorage automatically)
+        setUser(profile);
+      } catch (error) {
+        console.error('[OAuthHandler] Failed to fetch profile, using token data:', error);
+        // Fallback: Extract user info from token
+        try {
+          const payload = JSON.parse(atob(urlToken.split('.')[1]));
+          setUser({
+            id: payload.sub || '',
+            email: payload.email || '',
+            name: payload.email?.split('@')[0] || 'User',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        } catch (e) {
+          console.error('[OAuthHandler] Failed to decode token:', e);
+        }
+      }
       
       // 4. Clean up sessionStorage (tokens are now in Zustand persist)
       sessionStorage.removeItem('oauth_token');
       sessionStorage.removeItem('oauth_refreshToken');
       
-      // 5. Clean up URL and navigate to dashboard
-      window.history.replaceState({}, '', '/app/dashboard');
-      navigate('/dashboard', { replace: true });
+      // 5. Clean up URL and navigate to dashboard (only if not already there)
+      const currentPath = window.location.pathname;
+      if (currentPath !== '/dashboard' && !currentPath.startsWith('/dashboard')) {
+        window.history.replaceState({}, '', '/dashboard');
+        navigate('/dashboard', { replace: true });
+      }
       
     } catch (error) {
       console.error('[OAuthHandler] Error processing OAuth callback:', error);

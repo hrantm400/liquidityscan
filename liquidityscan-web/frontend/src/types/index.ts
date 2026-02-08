@@ -13,7 +13,7 @@ export interface User {
 export type StrategyType = 'RSI_DIVERGENCE' | 'SUPER_ENGULFING' | 'ICT_BIAS';
 export type SignalType = 'BUY' | 'SELL';
 export type Timeframe = '5m' | '15m' | '1h' | '4h' | '1d' | '1w';
-export type SignalStatus = 'ACTIVE' | 'EXPIRED' | 'FILLED';
+export type SignalStatus = 'ACTIVE' | 'EXPIRED' | 'FILLED' | 'CLOSED';
 
 export interface Signal {
   id: string;
@@ -60,6 +60,41 @@ export interface Subscription {
   price: number;
   features: Record<string, any>;
   limits: Record<string, any>;
+  billingPeriod?: 'monthly' | 'yearly' | 'lifetime';
+  isActive?: boolean;
+  sortOrder?: number;
+  cryptoCurrencies?: string[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface UserSubscription {
+  id: string;
+  userId: string;
+  subscriptionId: string;
+  status: 'active' | 'expired' | 'cancelled' | 'pending_payment';
+  startedAt?: string;
+  expiresAt?: string;
+  renewalDate?: string;
+  autoRenew: boolean;
+  paymentId?: string;
+  subscription?: Subscription;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SubscriptionPayment {
+  id: string;
+  userId: string;
+  subscriptionId: string;
+  paymentId: string;
+  amount: number;
+  currency: string;
+  status: string;
+  payAddress?: string;
+  paymentUrl?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // RSI Divergence types

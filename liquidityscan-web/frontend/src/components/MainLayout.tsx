@@ -1,41 +1,68 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { ThemeToggle } from './ThemeToggle';
 import { useAuthStore } from '../store/authStore';
-import { authApi } from '../services/api';
+import { authApi, userApi } from '../services/userApi';
+import { useQuery } from '@tanstack/react-query';
+import { SubscriptionBadge } from './subscriptions/SubscriptionBadge';
 
 const MainLayout: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const { user, setUser, token, isAdmin } = useAuthStore();
     const [loading, setLoading] = useState(true);
+    const hasFetchedRef = useRef(false);
 
     // Fetch user profile if we have a token but no user data, and protect routes
     useEffect(() => {
         const fetchProfile = async () => {
-            // MainLayout is only used for protected routes, so if no token, redirect to login
-            if (!token) {
-                navigate('/login', { replace: true });
+            // Don't redirect if already on login page
+            if (location.pathname === '/login' || location.pathname === '/register') {
                 setLoading(false);
                 return;
             }
 
-            // Fetch profile if we have token but no user data, or if isAdmin is not set
-            if (token && (!user || user.isAdmin === undefined)) {
+            // MainLayout is only used for protected routes, so if no token, redirect to login
+            if (!token) {
+                // Only redirect if not already on login/register
+                if (location.pathname !== '/login' && location.pathname !== '/register') {
+                    navigate('/login', { replace: true });
+                }
+                setLoading(false);
+                return;
+            }
+
+            // Always fetch profile to get latest isAdmin status (but only once per mount)
+            if (!hasFetchedRef.current) {
+                hasFetchedRef.current = true;
                 try {
                     const profile = await authApi.getProfile();
+                    console.log('[MainLayout] Profile loaded:', {
+                        id: profile.id,
+                        email: profile.email,
+                        isAdmin: profile.isAdmin,
+                        fullProfile: profile
+                    });
                     setUser(profile);
-                } catch (error) {
-                    // If profile fetch fails, user might not be authenticated
-                    console.error('Failed to fetch profile:', error);
-                    navigate('/login', { replace: true });
+                } catch (error: any) {
+                    // If profile fetch fails (401/403), clear token and redirect to login
+                    if (error?.message?.includes('401') || error?.message?.includes('403') || error?.message?.includes('Unauthorized')) {
+                        console.error('Failed to fetch profile - unauthorized:', error);
+                        useAuthStore.getState().logout();
+                        if (location.pathname !== '/login') {
+                            navigate('/login', { replace: true });
+                        }
+                    } else {
+                        // For other errors, just log but don't redirect (might be network issue)
+                        console.error('Failed to fetch profile:', error);
+                    }
                 }
             }
             setLoading(false);
         };
 
         fetchProfile();
-    }, [token, user, setUser, navigate]);
+    }, [token, location.pathname, navigate, setUser]); // Added location.pathname to dependencies
 
     const isActive = (path: string) => {
         const currentPath = location.pathname || '/';
@@ -61,7 +88,15 @@ const MainLayout: React.FC = () => {
 
     const displayName = user?.name || user?.email?.split('@')[0] || 'User';
     const displayEmail = user?.email || '';
-    const subscriptionPlan = user?.subscriptionId ? 'Pro Plan' : 'Free Plan';
+
+    // Fetch user subscription
+    const { data: mySubscription } = useQuery({
+      queryKey: ['mySubscription'],
+      queryFn: () => userApi.getMySubscription(),
+      enabled: !!token,
+    });
+
+    const subscriptionPlan = mySubscription?.subscription?.name || 'Free Plan';
 
     return (
         <div className="flex h-screen w-full selection:bg-primary selection:text-black overflow-hidden font-sans dark:bg-background-dark dark:text-white light:bg-background-light light:text-text-dark">
@@ -138,13 +173,40 @@ const MainLayout: React.FC = () => {
                             </Link>
                         </div>
 
+                        {/* ACADEMY */}
+                        <div className="flex flex-col gap-2">
+                            <p className="px-4 text-xs font-bold tracking-widest dark:text-gray-500 light:text-text-light-secondary uppercase">ACADEMY</p>
+
+                            <Link to="/courses" className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${isActive('/courses')}`}>
+                                <span className="material-symbols-outlined transition-colors">school</span>
+                                <span className="text-sm font-medium">Courses</span>
+                            </Link>
+                        </div>
+
+                        {/* ADMIN PANEL - только для админов */}
+                        {(isAdmin || user?.isAdmin) && (
+                            <div className="flex flex-col gap-2">
+                                <p className="px-4 text-xs font-bold tracking-widest dark:text-gray-500 light:text-text-light-secondary uppercase">ADMIN</p>
+                                <Link 
+                                    to="/admin" 
+                                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all bg-primary/10 border border-primary/20 ${isActive('/admin')}`}
+                                >
+                                    <span className="material-symbols-outlined transition-colors text-primary">admin_panel_settings</span>
+                                    <span className="text-sm font-bold text-primary">Admin Panel</span>
+                                </Link>
+                            </div>
+                        )}
+                        
+                        {/* Debug info - always show for troubleshooting */}
+                        <div className="px-4 py-2 text-xs text-gray-500 border-t dark:border-white/5 light:border-green-300/50 mt-2">
+                            <div>Debug: isAdmin={String(isAdmin)}</div>
+                            <div>user?.isAdmin={String(user?.isAdmin)}</div>
+                            <div>user?.email={user?.email || 'N/A'}</div>
+                            <div>hasFetched={String(hasFetchedRef.current)}</div>
+                        </div>
+
                         {/* Other Pages */}
                         <div className="flex flex-col gap-2">
-                            <Link to="/academy" className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${isActive('/academy')}`}>
-                                <span className="material-symbols-outlined transition-colors">school</span>
-                                <span className="text-sm font-medium">Academy</span>
-                            </Link>
-
                             <Link to="/daily-recap" className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${isActive('/daily-recap')}`}>
                                 <span className="material-symbols-outlined transition-colors">summarize</span>
                                 <span className="text-sm font-medium">Daily Recap</span>
@@ -164,14 +226,6 @@ const MainLayout: React.FC = () => {
                                 <span className="material-symbols-outlined transition-colors">help</span>
                                 <span className="text-sm font-medium">Support</span>
                             </Link>
-
-                            {/* Admin Panel Link - only for admins */}
-                            {isAdmin && (
-                                <Link to="/admin" className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all border-2 ${isActive('/admin') ? 'bg-red-500/20 border-red-500/30 dark:text-red-400 light:text-red-600' : 'border-red-500/20 dark:text-red-400 light:text-red-600 hover:bg-red-500/10'}`}>
-                                    <span className="material-symbols-outlined transition-colors">admin_panel_settings</span>
-                                    <span className="text-sm font-bold">Admin Panel</span>
-                                </Link>
-                            )}
                         </div>
                     </div>
                 </div>
@@ -192,9 +246,16 @@ const MainLayout: React.FC = () => {
                             <span className="text-sm font-bold dark:text-white light:text-text-dark group-hover:text-primary transition-colors truncate">
                                 {loading ? 'Loading...' : displayName}
                             </span>
-                            <span className="text-[11px] dark:text-gray-300 light:text-text-light-secondary font-medium">
-                                {loading ? '...' : subscriptionPlan}
-                            </span>
+                            <div className="mt-1">
+                                {loading ? (
+                                    <span className="text-[11px] dark:text-gray-300 light:text-text-light-secondary font-medium">...</span>
+                                ) : (
+                                    <SubscriptionBadge 
+                                        subscription={mySubscription?.subscription} 
+                                        status={mySubscription?.subscriptionStatus}
+                                    />
+                                )}
+                            </div>
                         </div>
                         <span className="material-symbols-outlined dark:text-gray-400 light:text-text-light-secondary text-base ml-auto dark:group-hover:text-white light:group-hover:text-primary transition-colors shrink-0">chevron_right</span>
                     </Link>
@@ -203,7 +264,16 @@ const MainLayout: React.FC = () => {
 
             {/* Main Content Area */}
             <main className="relative z-10 flex flex-col flex-1 h-full overflow-y-auto custom-scrollbar">
-                <Outlet />
+                {loading ? (
+                    <div className="flex items-center justify-center h-full">
+                        <div className="text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                            <div className="text-white text-lg">Loading...</div>
+                        </div>
+                    </div>
+                ) : (
+                    <Outlet />
+                )}
             </main>
         </div>
     );

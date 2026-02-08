@@ -1,9 +1,9 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Signal, Timeframe } from '../types';
-import { signalsApi } from '../services/api';
+// import { signalsApi } from '../services/api'; // TODO: Re-enable when API service is recreated
 import { StaticMiniChart } from '../components/StaticMiniChart';
 import { FilterMenu } from '../components/shared/FilterMenu';
 import { PatternFilter } from '../components/shared/PatternFilter';
@@ -12,6 +12,7 @@ import { TrendIndicator } from '../components/shared/TrendIndicator';
 import { PageHeader } from '../components/layout/PageHeader';
 import { AnimatedCard } from '../components/animations/AnimatedCard';
 import { useMarketData } from '../hooks/useMarketData';
+import { fetchCandles } from '../services/candles';
 import { useSignalFilter } from '../hooks/useSignalFilter';
 import { scaleInVariants } from '../utils/animations';
 
@@ -19,8 +20,8 @@ import { scaleInVariants } from '../utils/animations';
 function SignalCardWithChart({ signal, isLong }: { signal: Signal; isLong: boolean }) {
   const { data: candlesData } = useQuery({
     queryKey: ['candles', signal.symbol, signal.timeframe, 'mini'],
-    queryFn: () => signalsApi.getCandles(signal.symbol, signal.timeframe, 50),
-    enabled: true,
+    queryFn: () => fetchCandles(signal.symbol, signal.timeframe, 50),
+    enabled: !!signal?.symbol && !!signal?.timeframe,
     staleTime: 300000,
   });
 
@@ -29,11 +30,10 @@ function SignalCardWithChart({ signal, isLong }: { signal: Signal; isLong: boole
   return (
     <div className="h-32 w-full dark:bg-black/40 light:bg-gray-100 relative dark:border-y-white/5 light:border-y-green-200/30 border-y overflow-hidden">
       <div
-        className={`absolute inset-0 ${
-          isLong
-            ? 'bg-[radial-gradient(circle_at_50%_100%,rgba(19,236,55,0.05),transparent_70%)]'
-            : 'bg-[radial-gradient(circle_at_50%_100%,rgba(239,68,68,0.05),transparent_70%)]'
-        } opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none z-10`}
+        className={`absolute inset-0 ${isLong
+          ? 'bg-[radial-gradient(circle_at_50%_100%,rgba(19,236,55,0.05),transparent_70%)]'
+          : 'bg-[radial-gradient(circle_at_50%_100%,rgba(239,68,68,0.05),transparent_70%)]'
+          } opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none z-10`}
       ></div>
       <StaticMiniChart candles={candles} isLong={isLong} height={128} />
     </div>
@@ -112,6 +112,7 @@ function getTrendStrength(signal: Signal): { label: string; color: string; icon:
 export function MonitorBias() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [activeTimeframe, setActiveTimeframe] = useState<Timeframe | 'all'>(
     (searchParams.get('timeframe') as Timeframe) || 'all',
@@ -127,13 +128,15 @@ export function MonitorBias() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<string | null>(null);
 
   // Use the new useMarketData hook
   const { signals, isLoading, refetch } = useMarketData({
     strategyType: 'ICT_BIAS',
     timeframe: activeTimeframe === 'all' ? undefined : activeTimeframe,
     limit: 5000, // Increased limit to show all signals
-    refetchInterval: 30000,
+    refetchInterval: 60000,
   });
 
   // Use the new useSignalFilter hook
@@ -158,7 +161,7 @@ export function MonitorBias() {
     } else if (statusFilter === 'active') {
       return filteredSignals.filter(s => s.status === 'ACTIVE');
     } else if (statusFilter === 'closed') {
-      return filteredSignals.filter(s => s.status === 'CLOSED');
+      return filteredSignals.filter(s => s.status !== 'ACTIVE'); // CLOSED, EXPIRED, FILLED
     }
     return filteredSignals;
   }, [filteredSignals, statusFilter]);
@@ -177,8 +180,12 @@ export function MonitorBias() {
   // Calculate signals by timeframe - count ONLY ACTIVE signals for cards
   // ICT Bias uses only 4h, 1d, 1w timeframes
   const timeframeStats = useMemo(() => {
+    // Initialize with 0 for all required timeframes to satisfy the type
     const stats: Record<Timeframe | 'all', number> = {
       all: signals.filter(s => s.status === 'ACTIVE').length,
+      '5m': 0,
+      '15m': 0,
+      '1h': 0,
       '4h': 0,
       '1d': 0,
       '1w': 0,
@@ -213,6 +220,24 @@ export function MonitorBias() {
     setBearFilter('All');
     setSearchQuery('');
   }, []);
+
+  const handleScanIctBias = useCallback(async () => {
+    setIsScanning(true);
+    setScanResult(null);
+    try {
+      const result: any = await signalsApi.scanIctBias(activeTimeframe === 'all' ? undefined : activeTimeframe);
+      setScanResult(
+        `Scan completed! Generated ${result.totalSignals || 0} signals from ${result.symbolsScanned || 0} symbols across ${result.timeframesScanned || 0} timeframes.`
+      );
+      // Invalidate and refetch signals after scan
+      await queryClient.invalidateQueries({ queryKey: ['signals', 'ICT_BIAS'] });
+      await queryClient.invalidateQueries({ queryKey: ['marketData'] });
+    } catch (error: any) {
+      setScanResult(`Error: ${error.message || 'Failed to start scan'}`);
+    } finally {
+      setIsScanning(false);
+    }
+  }, [activeTimeframe, queryClient]);
 
   if (isLoading) {
     return (
@@ -250,13 +275,12 @@ export function MonitorBias() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* 4H */}
           <AnimatedCard
-            className={`group relative flex flex-col justify-between p-5 rounded-xl dark:backdrop-blur-md border transition-all cursor-pointer h-36 ${
-              timeframeStats['4h'] > 0
-                ? activeTimeframe === '4h'
-                  ? 'dark:bg-[rgba(20,30,22,0.6)] light:bg-green-50 dark:border-[rgba(19,236,55,0.5)] light:border-green-400 dark:shadow-[0_0_15px_rgba(19,236,55,0.15)] light:shadow-[0_0_10px_rgba(19,236,55,0.1)] hover:shadow-[0_0_25px_rgba(19,236,55,0.25)] ring-1 ring-primary/20'
-                  : 'dark:bg-[rgba(20,30,22,0.4)] light:bg-green-50 dark:border-[rgba(19,236,55,0.3)] light:border-green-400 hover:shadow-[0_0_20px_rgba(19,236,55,0.2)]'
-                : 'dark:bg-[rgba(20,30,22,0.2)] light:bg-green-50 dark:border-[#234829] light:border-green-300 opacity-50 cursor-not-allowed hover:opacity-60'
-            }`}
+            className={`group relative flex flex-col justify-between p-5 rounded-xl dark:backdrop-blur-md border transition-all cursor-pointer h-36 ${timeframeStats['4h'] > 0
+              ? activeTimeframe === '4h'
+                ? 'dark:bg-[rgba(20,30,22,0.6)] light:bg-green-50 dark:border-[rgba(19,236,55,0.5)] light:border-green-400 dark:shadow-[0_0_15px_rgba(19,236,55,0.15)] light:shadow-[0_0_10px_rgba(19,236,55,0.1)] hover:shadow-[0_0_25px_rgba(19,236,55,0.25)] ring-1 ring-primary/20'
+                : 'dark:bg-[rgba(20,30,22,0.4)] light:bg-green-50 dark:border-[rgba(19,236,55,0.3)] light:border-green-400 hover:shadow-[0_0_20px_rgba(19,236,55,0.2)]'
+              : 'dark:bg-[rgba(20,30,22,0.2)] light:bg-green-50 dark:border-[#234829] light:border-green-300 opacity-50 cursor-not-allowed hover:opacity-60'
+              }`}
             onClick={() => {
               if (timeframeStats['4h'] > 0) {
                 handleTimeframeClick('4h');
@@ -284,11 +308,10 @@ export function MonitorBias() {
             </div>
             <div className="mt-auto">
               <span
-                className={`text-5xl font-black tracking-tight ${
-                  timeframeStats['4h'] > 0
-                    ? 'text-primary drop-shadow-[0_0_12px_rgba(19,236,55,0.6)]'
-                    : 'dark:text-gray-700 light:text-text-light-secondary'
-                }`}
+                className={`text-5xl font-black tracking-tight ${timeframeStats['4h'] > 0
+                  ? 'text-primary drop-shadow-[0_0_12px_rgba(19,236,55,0.6)]'
+                  : 'dark:text-gray-700 light:text-text-light-secondary'
+                  }`}
               >
                 {timeframeStats['4h']}
               </span>
@@ -300,13 +323,12 @@ export function MonitorBias() {
 
           {/* 1D */}
           <AnimatedCard
-            className={`group relative flex flex-col justify-between p-5 rounded-xl dark:backdrop-blur-md border transition-all cursor-pointer h-36 ${
-              timeframeStats['1d'] > 0
-                ? activeTimeframe === '1d'
-                  ? 'dark:bg-[rgba(20,30,22,0.6)] light:bg-green-50 dark:border-[rgba(19,236,55,0.5)] light:border-green-400 dark:shadow-[0_0_15px_rgba(19,236,55,0.15)] light:shadow-[0_0_10px_rgba(19,236,55,0.1)] hover:shadow-[0_0_25px_rgba(19,236,55,0.25)] ring-1 ring-primary/20'
-                  : 'dark:bg-[rgba(20,30,22,0.4)] light:bg-green-50 dark:border-[rgba(19,236,55,0.3)] light:border-green-400 hover:shadow-[0_0_20px_rgba(19,236,55,0.2)]'
-                : 'dark:bg-[rgba(20,30,22,0.2)] light:bg-green-50 dark:border-[#234829] light:border-green-300 opacity-50 cursor-not-allowed hover:opacity-60'
-            }`}
+            className={`group relative flex flex-col justify-between p-5 rounded-xl dark:backdrop-blur-md border transition-all cursor-pointer h-36 ${timeframeStats['1d'] > 0
+              ? activeTimeframe === '1d'
+                ? 'dark:bg-[rgba(20,30,22,0.6)] light:bg-green-50 dark:border-[rgba(19,236,55,0.5)] light:border-green-400 dark:shadow-[0_0_15px_rgba(19,236,55,0.15)] light:shadow-[0_0_10px_rgba(19,236,55,0.1)] hover:shadow-[0_0_25px_rgba(19,236,55,0.25)] ring-1 ring-primary/20'
+                : 'dark:bg-[rgba(20,30,22,0.4)] light:bg-green-50 dark:border-[rgba(19,236,55,0.3)] light:border-green-400 hover:shadow-[0_0_20px_rgba(19,236,55,0.2)]'
+              : 'dark:bg-[rgba(20,30,22,0.2)] light:bg-green-50 dark:border-[#234829] light:border-green-300 opacity-50 cursor-not-allowed hover:opacity-60'
+              }`}
             onClick={() => {
               if (timeframeStats['1d'] > 0) {
                 handleTimeframeClick('1d');
@@ -334,11 +356,10 @@ export function MonitorBias() {
             </div>
             <div className="mt-auto">
               <span
-                className={`text-5xl font-black tracking-tight ${
-                  timeframeStats['1d'] > 0
-                    ? 'text-primary drop-shadow-[0_0_8px_rgba(19,236,55,0.5)]'
-                    : 'dark:text-gray-700 light:text-text-light-secondary'
-                }`}
+                className={`text-5xl font-black tracking-tight ${timeframeStats['1d'] > 0
+                  ? 'text-primary drop-shadow-[0_0_8px_rgba(19,236,55,0.5)]'
+                  : 'dark:text-gray-700 light:text-text-light-secondary'
+                  }`}
               >
                 {timeframeStats['1d']}
               </span>
@@ -350,13 +371,12 @@ export function MonitorBias() {
 
           {/* 1W */}
           <AnimatedCard
-            className={`group relative flex flex-col justify-between p-5 rounded-xl dark:backdrop-blur-md border transition-all cursor-pointer h-36 ${
-              timeframeStats['1w'] > 0
-                ? activeTimeframe === '1w'
-                  ? 'dark:bg-[rgba(20,30,22,0.6)] light:bg-green-50 dark:border-[rgba(19,236,55,0.5)] light:border-green-400 dark:shadow-[0_0_15px_rgba(19,236,55,0.15)] light:shadow-[0_0_10px_rgba(19,236,55,0.1)] hover:shadow-[0_0_25px_rgba(19,236,55,0.25)] ring-1 ring-primary/20'
-                  : 'dark:bg-[rgba(20,30,22,0.4)] light:bg-green-50 dark:border-[rgba(19,236,55,0.3)] light:border-green-400 hover:shadow-[0_0_20px_rgba(19,236,55,0.2)]'
-                : 'dark:bg-[rgba(20,30,22,0.2)] light:bg-green-50 dark:border-[#234829] light:border-green-300 opacity-50 cursor-not-allowed hover:opacity-60'
-            }`}
+            className={`group relative flex flex-col justify-between p-5 rounded-xl dark:backdrop-blur-md border transition-all cursor-pointer h-36 ${timeframeStats['1w'] > 0
+              ? activeTimeframe === '1w'
+                ? 'dark:bg-[rgba(20,30,22,0.6)] light:bg-green-50 dark:border-[rgba(19,236,55,0.5)] light:border-green-400 dark:shadow-[0_0_15px_rgba(19,236,55,0.15)] light:shadow-[0_0_10px_rgba(19,236,55,0.1)] hover:shadow-[0_0_25px_rgba(19,236,55,0.25)] ring-1 ring-primary/20'
+                : 'dark:bg-[rgba(20,30,22,0.4)] light:bg-green-50 dark:border-[rgba(19,236,55,0.3)] light:border-green-400 hover:shadow-[0_0_20px_rgba(19,236,55,0.2)]'
+              : 'dark:bg-[rgba(20,30,22,0.2)] light:bg-green-50 dark:border-[#234829] light:border-green-300 opacity-50 cursor-not-allowed hover:opacity-60'
+              }`}
             onClick={() => {
               if (timeframeStats['1w'] > 0) {
                 handleTimeframeClick('1w');
@@ -384,11 +404,10 @@ export function MonitorBias() {
             </div>
             <div className="mt-auto">
               <span
-                className={`text-5xl font-black tracking-tight ${
-                  timeframeStats['1w'] > 0
-                    ? 'text-primary drop-shadow-[0_0_8px_rgba(19,236,55,0.5)]'
-                    : 'dark:text-gray-700 light:text-text-light-secondary'
-                }`}
+                className={`text-5xl font-black tracking-tight ${timeframeStats['1w'] > 0
+                  ? 'text-primary drop-shadow-[0_0_8px_rgba(19,236,55,0.5)]'
+                  : 'dark:text-gray-700 light:text-text-light-secondary'
+                  }`}
               >
                 {timeframeStats['1w']}
               </span>
@@ -403,6 +422,47 @@ export function MonitorBias() {
       {/* Main Content */}
       <div className="flex-1 min-h-0 px-8 pb-8 flex flex-col">
         <div className="mx-auto w-full max-w-[1600px] flex flex-col gap-4 min-h-full">
+          {/* Manual Scan Button */}
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center justify-between p-4 rounded-xl dark:bg-[rgba(19,236,55,0.05)] light:bg-green-50 dark:border border-primary/20 light:border-green-300"
+          >
+            <div className="flex flex-col">
+              <span className="text-sm font-bold dark:text-white light:text-text-dark">Manual ICT Bias Scan</span>
+              <span className="text-xs dark:text-gray-400 light:text-text-light-secondary">
+                Run daily bias analysis manually for all symbols
+              </span>
+              {scanResult && (
+                <span className={`text-xs mt-1 ${scanResult.includes('Error') ? 'text-red-400' : 'text-primary'}`}>
+                  {scanResult}
+                </span>
+              )}
+            </div>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleScanIctBias}
+              disabled={isScanning}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all ${isScanning
+                ? 'dark:bg-gray-700 light:bg-gray-300 dark:text-gray-400 light:text-text-light-secondary cursor-not-allowed'
+                : 'bg-primary text-black hover:bg-primary/90 shadow-[0_0_15px_rgba(19,236,55,0.3)]'
+                }`}
+            >
+              {isScanning ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                  <span>Scanning...</span>
+                </>
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-lg">radar</span>
+                  <span>Start Scan</span>
+                </>
+              )}
+            </motion.button>
+          </motion.div>
+
           {/* Filters Bar */}
           <div className="flex items-center gap-2.5 py-2 dark:bg-background-dark/50 dark:backdrop-blur-sm light:bg-green-50 sticky top-0 z-20 overflow-visible flex-nowrap">
             {/* Search */}
@@ -445,11 +505,10 @@ export function MonitorBias() {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setFilterMenuOpen(!filterMenuOpen)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors group whitespace-nowrap ${
-                  filterMenuOpen
-                    ? 'dark:bg-white/10 light:bg-green-100 border-primary/30 dark:text-white light:text-text-dark active:bg-primary/10 active:border-primary/30'
-                    : 'dark:bg-white/5 light:bg-green-50 dark:border-white/10 light:border-green-300 dark:text-gray-300 light:text-text-light-secondary dark:hover:bg-white/10 light:hover:bg-green-100 dark:hover:text-white light:hover:text-text-dark'
-                }`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors group whitespace-nowrap ${filterMenuOpen
+                  ? 'dark:bg-white/10 light:bg-green-100 border-primary/30 dark:text-white light:text-text-dark active:bg-primary/10 active:border-primary/30'
+                  : 'dark:bg-white/5 light:bg-green-50 dark:border-white/10 light:border-green-300 dark:text-gray-300 light:text-text-light-secondary dark:hover:bg-white/10 light:hover:bg-green-100 dark:hover:text-white light:hover:text-text-dark'
+                  }`}
               >
                 <span className={`material-symbols-outlined text-sm ${filterMenuOpen ? 'text-primary' : 'group-hover:text-primary transition-colors'}`}>
                   filter_list
@@ -479,9 +538,8 @@ export function MonitorBias() {
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded transition-all ${
-                  viewMode === 'list' ? 'bg-primary text-black' : 'dark:text-gray-400 light:text-text-light-secondary dark:hover:text-white light:hover:text-text-dark'
-                }`}
+                className={`p-1.5 rounded transition-all ${viewMode === 'list' ? 'bg-primary text-black' : 'dark:text-gray-400 light:text-text-light-secondary dark:hover:text-white light:hover:text-text-dark'
+                  }`}
                 title="List View"
               >
                 <span className="material-symbols-outlined text-base">view_list</span>
@@ -490,9 +548,8 @@ export function MonitorBias() {
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded transition-all ${
-                  viewMode === 'grid' ? 'bg-primary text-black' : 'dark:text-gray-400 light:text-text-light-secondary dark:hover:text-white light:hover:text-text-dark'
-                }`}
+                className={`p-1.5 rounded transition-all ${viewMode === 'grid' ? 'bg-primary text-black' : 'dark:text-gray-400 light:text-text-light-secondary dark:hover:text-white light:hover:text-text-dark'
+                  }`}
                 title="Grid View"
               >
                 <span className="material-symbols-outlined text-base">grid_view</span>
@@ -646,9 +703,8 @@ export function MonitorBias() {
                         >
                           <AnimatedCard
                             onClick={() => navigate(`/signals/${signal.id}`)}
-                            className={`glass-panel rounded-2xl overflow-hidden relative group cursor-pointer flex flex-col ${
-                              isLong ? 'long-glow' : 'short-glow'
-                            }`}
+                            className={`glass-panel rounded-2xl overflow-hidden relative group cursor-pointer flex flex-col ${isLong ? 'long-glow' : 'short-glow'
+                              }`}
                           >
                             <div className="p-5 flex justify-between items-start z-10 relative">
                               <div className="flex flex-col">
@@ -656,11 +712,10 @@ export function MonitorBias() {
                                 <span className="text-xs dark:text-gray-400 light:text-text-light-secondary font-mono mt-1">Binance Perp</span>
                               </div>
                               <span
-                                className={`px-3 py-1 rounded-full text-xs font-bold tracking-wider shadow-[0_0_10px_rgba(19,236,55,0.2)] ${
-                                  isLong
-                                    ? 'bg-primary/10 border border-primary/20 text-primary'
-                                    : 'bg-red-500/10 border border-red-500/20 text-red-500'
-                                }`}
+                                className={`px-3 py-1 rounded-full text-xs font-bold tracking-wider shadow-[0_0_10px_rgba(19,236,55,0.2)] ${isLong
+                                  ? 'bg-primary/10 border border-primary/20 text-primary'
+                                  : 'bg-red-500/10 border border-red-500/20 text-red-500'
+                                  }`}
                               >
                                 {biasType}
                               </span>
@@ -674,13 +729,12 @@ export function MonitorBias() {
                               <div className="flex flex-col items-end">
                                 <span className="text-[10px] uppercase dark:text-gray-500 light:text-text-light-secondary font-bold tracking-wider mb-0.5">Trend</span>
                                 <span
-                                  className={`font-mono font-bold ${
-                                    trend.color === 'primary'
-                                      ? 'text-primary'
-                                      : trend.color === 'red-500'
+                                  className={`font-mono font-bold ${trend.color === 'primary'
+                                    ? 'text-primary'
+                                    : trend.color === 'red-500'
                                       ? 'text-red-500'
                                       : 'text-yellow-500'
-                                  }`}
+                                    }`}
                                 >
                                   {trend.label}
                                 </span>

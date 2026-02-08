@@ -1,9 +1,0 @@
-export { AdminLayout } from './AdminLayout';
-export { AdminDashboard } from './AdminDashboard';
-export { UsersManagement } from './UsersManagement';
-export { CoursesManagement } from './CoursesManagement';
-export { SignalsManagement } from './SignalsManagement';
-export { Analytics } from './Analytics';
-export { ContentManagement } from './ContentManagement';
-export { AdminSettings } from './AdminSettings';
-export { CourseEditor } from './CourseEditor';

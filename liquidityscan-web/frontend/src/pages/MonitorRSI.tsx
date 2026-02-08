@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { Signal, Timeframe } from '../types';
 import { FilterMenu } from '../components/shared/FilterMenu';
@@ -11,6 +12,8 @@ import { AnimatedCard } from '../components/animations/AnimatedCard';
 import { useMarketData } from '../hooks/useMarketData';
 import { useSignalFilter } from '../hooks/useSignalFilter';
 import { scaleInVariants } from '../utils/animations';
+import { userApi } from '../services/userApi';
+import { useAuthStore } from '../store/authStore';
 
 // Symbol Avatar Component
 function SymbolAvatar({ symbol }: { symbol: string }) {
@@ -77,12 +80,22 @@ export function MonitorRSI() {
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
 
+  const { isAuthenticated } = useAuthStore();
+  const { data: mySubscription } = useQuery({
+    queryKey: ['mySubscription'],
+    queryFn: () => userApi.getMySubscription(),
+    enabled: isAuthenticated,
+  });
+  const isFreeForever = mySubscription?.subscription?.tier === 'SCOUT';
+  const contextFiltersAllowed = mySubscription?.subscription?.limits?.contextFilters !== false;
+  const allowedPairs: string[] | undefined = mySubscription?.subscription?.limits?.pairs;
+
   // Use the new useMarketData hook
   const { signals, isLoading, refetch } = useMarketData({
     strategyType: 'RSI_DIVERGENCE',
     timeframe: activeTimeframe === 'all' ? undefined : activeTimeframe,
     limit: 5000, // Increased limit to show all signals
-    refetchInterval: 30000,
+    refetchInterval: 60000,
   });
 
   // Use the new useSignalFilter hook
@@ -107,16 +120,33 @@ export function MonitorRSI() {
     } else if (statusFilter === 'active') {
       return filteredSignals.filter(s => s.status === 'ACTIVE');
     } else if (statusFilter === 'closed') {
-      return filteredSignals.filter(s => s.status === 'CLOSED');
+      return filteredSignals.filter(s => s.status !== 'ACTIVE'); // CLOSED, EXPIRED, FILLED
     }
     return filteredSignals;
   }, [filteredSignals, statusFilter]);
 
+  // Free Forever (SCOUT): RSI Divergence is a context filter — restrict to allowed pairs and 4H/Daily only
+  const subscriptionFilteredSignals = useMemo(() => {
+    if (!isFreeForever) return statusFilteredSignals;
+    return statusFilteredSignals.filter((s) => {
+      const tf = s.timeframe?.toLowerCase();
+      const allowedTf = tf === '4h' || tf === '1d' || tf === 'daily';
+      if (!allowedTf) return false;
+      if (!allowedPairs?.length) return true;
+      return allowedPairs.some(
+        (p) =>
+          s.symbol === p ||
+          s.symbol.toUpperCase().startsWith(p.toUpperCase()) ||
+          s.symbol.toUpperCase().includes(p.toUpperCase())
+      );
+    });
+  }, [statusFilteredSignals, isFreeForever, allowedPairs]);
+
   // Pagination
-  const totalPages = Math.ceil(statusFilteredSignals.length / pageSize);
+  const totalPages = Math.ceil(subscriptionFilteredSignals.length / pageSize);
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = startIndex + pageSize;
-  const paginatedSignals = statusFilteredSignals.slice(startIndex, endIndex);
+  const paginatedSignals = subscriptionFilteredSignals.slice(startIndex, endIndex);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -230,6 +260,25 @@ export function MonitorRSI() {
         onRefresh={refetch}
       />
 
+      {/* Free Forever: RSI Divergence is a context filter — info only */}
+      {isFreeForever && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mx-8 mt-4 p-4 rounded-xl dark:bg-primary/10 light:bg-green-100 dark:border border-primary/30 light:border-green-400 flex flex-wrap items-center justify-between gap-3"
+        >
+          <span className="text-sm dark:text-gray-200 light:text-text-dark">
+            RSI Divergence is a context filter. Free Forever shows 4H and Daily only for BTC, ETH, EURUSD, XAUUSD.
+          </span>
+          <Link
+            to="/subscriptions"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-black font-bold text-sm hover:bg-primary/90 transition-colors"
+          >
+            Plan details
+          </Link>
+        </motion.div>
+      )}
+
       {/* Timeframe Cards */}
       <motion.div
         initial="initial"
@@ -238,7 +287,8 @@ export function MonitorRSI() {
         className="flex flex-col gap-6 px-8 pt-8 pb-4 shrink-0"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* 1H */}
+          {/* 1H - hidden for Free Forever (4H and Daily only) */}
+          {!isFreeForever && (
           <AnimatedCard
             className={`group relative flex flex-col justify-between p-5 rounded-xl dark:backdrop-blur-md border transition-all cursor-pointer h-36 ${
               timeframeStats['1h'] > 0
@@ -287,6 +337,7 @@ export function MonitorRSI() {
               </span>
             </div>
           </AnimatedCard>
+          )}
 
           {/* 4H */}
           <AnimatedCard
@@ -570,7 +621,7 @@ export function MonitorRSI() {
                       <option value={100}>100</option>
                     </select>
                     <span className="text-xs dark:text-gray-400 light:text-text-light-secondary">
-                        of {statusFilteredSignals.length} signals
+                        of {subscriptionFilteredSignals.length} signals
                     </span>
                   </div>
                   <div className="flex items-center gap-2">

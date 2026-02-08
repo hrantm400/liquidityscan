@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../store/authStore';
-import { authApi } from '../services/api';
+// import { authApi } from '../services/api'; // TODO: Re-enable when API service is recreated
 
 export function Register() {
   const navigate = useNavigate();
@@ -14,6 +14,7 @@ export function Register() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const referralCode = searchParams.get('ref') || '';
 
   // Redirect to dashboard if already logged in
   useEffect(() => {
@@ -72,17 +73,25 @@ export function Register() {
 
     setLoading(true);
 
-    try {
-      const data = await authApi.register({ name, email, password });
-      setUser(data.user);
-      setToken(data.accessToken);
-      setRefreshToken(data.refreshToken);
-      navigate('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Failed to register');
-    } finally {
-      setLoading(false);
-    }
+    // TODO: Re-enable when API service is recreated
+    // try {
+    //   const data = await authApi.register({ 
+    //     name, 
+    //     email, 
+    //     password,
+    //     referralCode: referralCode || undefined,
+    //   });
+    //   setUser(data.user);
+    //   setToken(data.accessToken);
+    //   setRefreshToken(data.refreshToken);
+    //   navigate('/dashboard');
+    // } catch (err: any) {
+    //   setError(err.message || 'Failed to register');
+    // } finally {
+    //   setLoading(false);
+    // }
+    setError('API service is not available. Please wait for backend integration.');
+    setLoading(false);
   };
 
   const handleGoogleLogin = () => {
@@ -116,6 +125,11 @@ export function Register() {
             <p className="text-sm dark:text-gray-400 light:text-text-light-secondary">
               Sign up to get started
             </p>
+            {referralCode && (
+              <div className="mt-2 px-3 py-1 rounded-lg bg-primary/10 border border-primary/30 text-primary text-xs inline-block">
+                Referred by: {referralCode}
+              </div>
+            )}
           </div>
 
           {/* Error Message */}

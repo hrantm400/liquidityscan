@@ -1,154 +1,163 @@
-# Troubleshooting Guide
+# Решение проблем (Troubleshooting)
 
-## Проблема: ERR_CONNECTION_REFUSED
+## Порт 3000 уже занят
 
-### Симптомы:
-- В браузере ошибки: `Failed to load resource: net::ERR_CONNECTION_REFUSED`
-- WebSocket не подключается: `WebSocket connection to 'ws://localhost:3000/socket.io/...' failed`
-- Фронтенд не может получить данные с бэкенда
+### Проблема
+```
+Error: listen EADDRINUSE: address already in use :::3000
+```
 
-### Решение:
+### Решение 1: Остановить процесс автоматически
 
-1. **Убедитесь, что бэкенд запущен:**
-   ```powershell
-   cd liquidityscan-web/backend
-   npm run start:dev
-   ```
-   
-   Должно появиться сообщение: `Application is running on: http://localhost:3000`
+```bash
+cd backend
+npm run kill:3000
+```
 
-2. **Проверьте, что бэкенд слушает на порту 3000:**
-   - Откройте браузер и перейдите на `http://localhost:3000/api/health`
-   - Должен вернуться ответ `{"status":"ok"}`
+Или для другого порта:
+```bash
+npm run kill:port 3001
+```
 
-3. **Проверьте переменные окружения:**
-   - Убедитесь, что файл `.env` существует в `liquidityscan-web/backend/`
-   - Проверьте, что `PORT=3000` (или не указан, тогда используется 3000 по умолчанию)
+### Решение 2: Найти и остановить вручную
 
-4. **Перезапустите фронтенд:**
-   ```powershell
-   cd liquidityscan-web/frontend
-   npm run dev
-   ```
+**Windows:**
+```powershell
+# Найти процесс
+netstat -ano | findstr ":3000"
 
-5. **Проверьте прокси в vite.config.ts:**
-   - Убедитесь, что прокси настроен правильно:
-   ```typescript
-   proxy: {
-     '/api': {
-       target: 'http://localhost:3000',
-       changeOrigin: true,
-       secure: false,
-     },
-     '/socket.io': {
-       target: 'http://localhost:3000',
-       changeOrigin: true,
-       secure: false,
-       ws: true,
-     },
-   }
-   ```
+# Остановить по PID (замените XXXX на реальный PID)
+taskkill /F /PID XXXX
+```
 
-## Проблема: WebSocket постоянно переподключается к биржам
+**Linux/Mac:**
+```bash
+# Найти процесс
+lsof -ti:3000
 
-### Симптомы:
-- В логах бэкенда постоянно появляются сообщения: `WebSocket closed, reconnecting...`
-- Подписки на символы постоянно переподключаются
+# Остановить
+kill -9 $(lsof -ti:3000)
+```
 
-### Причины:
-1. **Rate limiting от биржи** - слишком много подписок одновременно
-2. **Проблемы с сетью** - нестабильное интернет-соединение
-3. **Превышение лимита подписок** - Binance/MEXC имеют лимиты на количество одновременных подписок
+### Решение 3: Изменить порт
 
-### Решение:
-1. **Уменьшите количество символов** в `ANALYZE_SYMBOLS` в `.env`
-2. **Увеличьте задержку между подписками** в `market-analyzer.service.ts`
-3. **Проверьте интернет-соединение**
+Измените в `backend/.env`:
+```env
+PORT=3001
+```
 
-## Проблема: Сигналы не отображаются на фронтенде
+И обновите `GOOGLE_CALLBACK_URL`:
+```env
+GOOGLE_CALLBACK_URL=http://localhost:3001/api/auth/google/callback
+```
 
-### Симптомы:
-- Страницы пустые, нет сигналов
-- В консоли браузера нет ошибок, но данные не приходят
+## База данных не подключается
 
-### Решение:
+### Проверка локального PostgreSQL
 
-1. **Проверьте логи бэкенда:**
-   - Должны быть сообщения: `"Generating signals for SYMBOL TIMEFRAME"`
-   - Должны быть сообщения: `"Signal created: ..."`
-   - Должны быть сообщения: `"GET /signals - returning X signals"`
+1. Убедитесь, что служба PostgreSQL запущена (порт 5432).
+2. Проверьте `DATABASE_URL` в `backend/.env`: хост, порт 5432, пользователь, пароль, имя БД.
+3. Убедитесь, что база данных существует (например, `liquidityscan_db`).
+4. Если используется файрвол, проверьте, что порт 5432 разрешён.
 
-2. **Проверьте базу данных:**
-   ```sql
-   SELECT COUNT(*) FROM signals;
-   SELECT * FROM signals ORDER BY detected_at DESC LIMIT 10;
+### Проверка подключения
+
+```bash
+cd backend
+npm run db:check
+```
+
+## Google OAuth не работает
+
+### Проверка credentials
+
+1. Убедитесь, что в `backend/.env` есть:
+   ```env
+   GOOGLE_CLIENT_ID=ваш_id
+   GOOGLE_CLIENT_SECRET=ваш_secret
+   GOOGLE_CALLBACK_URL=http://localhost:3000/api/auth/google/callback
    ```
 
-3. **Проверьте фильтры на страницах:**
-   - Убедитесь, что фильтры не скрывают все сигналы
-   - Попробуйте сбросить все фильтры
+2. Перезапустите бэкенд после изменения `.env`
 
-4. **Проверьте WebSocket подключение:**
-   - В консоли браузера должно быть: `"WebSocket connected"`
-   - Должны приходить сообщения: `"New signal received via WebSocket"`
+3. Проверьте, что URLs в Google Cloud Console совпадают с `.env`
 
-## Проблема: Бэкенд не запускается
+### Ошибка "redirect_uri_mismatch"
 
-### Симптомы:
-- Ошибки при запуске `npm run start:dev`
-- Ошибки подключения к базе данных
-- Ошибки подключения к Redis
+URL в `.env` должен **точно** совпадать с URL в Google Cloud Console:
+- Включая `http://` или `https://`
+- Включая порт
+- Включая полный путь
 
-### Решение:
+## CORS ошибки
 
-1. **Проверьте базу данных:**
-   ```powershell
-   # Убедитесь, что PostgreSQL запущен
-   # Проверьте подключение в .env:
-   DATABASE_URL="postgresql://user:password@localhost:5432/dbname"
-   ```
+### Проблема
+```
+Access to fetch at 'http://localhost:3000/api/...' from origin 'http://localhost:5173' has been blocked by CORS policy
+```
 
-2. **Проверьте Redis:**
-   ```powershell
-   # Убедитесь, что Redis запущен
-   # Проверьте подключение в .env:
-   REDIS_HOST=localhost
-   REDIS_PORT=6379
-   ```
+### Решение
 
-3. **Выполните миграции:**
-   ```powershell
-   cd liquidityscan-web/backend
-   npx prisma migrate dev
-   ```
+Убедитесь, что в `backend/.env`:
+```env
+CORS_ORIGIN=http://localhost:5173
+```
 
-4. **Проверьте зависимости:**
-   ```powershell
-   npm install
-   ```
+И перезапустите бэкенд.
 
-## Быстрая проверка работоспособности
+## Prisma ошибки
 
-1. **Запустите бэкенд:**
-   ```powershell
-   cd liquidityscan-web/backend
-   npm run start:dev
-   ```
+### "Prisma Client не сгенерирован"
 
-2. **В другом терминале запустите фронтенд:**
-   ```powershell
-   cd liquidityscan-web/frontend
-   npm run dev
-   ```
+```bash
+cd backend
+npm run prisma:generate
+```
 
-3. **Проверьте health endpoint:**
-   - Откройте `http://localhost:3000/api/health` в браузере
-   - Должен вернуться `{"status":"ok"}`
+### "База данных не синхронизирована"
 
-4. **Проверьте API сигналов:**
-   - Откройте `http://localhost:3000/api/signals?strategyType=SUPER_ENGULFING&limit=10`
-   - Должен вернуться массив сигналов (может быть пустым, если сигналов еще нет)
+```bash
+cd backend
+npm run db:push
+```
 
-5. **Откройте фронтенд:**
-   - Откройте `http://localhost:5173` в браузере
-   - Проверьте консоль браузера (F12) на наличие ошибок
+### "Миграции не применены"
+
+```bash
+cd backend
+npm run prisma:migrate
+```
+
+## Модули не найдены
+
+### Переустановка зависимостей
+
+```bash
+cd backend
+rm -rf node_modules package-lock.json
+npm install
+```
+
+## Полезные команды
+
+```bash
+# Проверить подключение к БД
+npm run db:check
+
+# Освободить порт 3000
+npm run kill:3000
+
+# Открыть Prisma Studio
+npm run prisma:studio
+
+# Посмотреть логи бэкенда
+# (в терминале где запущен npm run start:dev)
+```
+
+## Получение помощи
+
+Если проблема не решена:
+1. Проверьте логи бэкенда
+2. Убедитесь, что PostgreSQL запущен и доступен на порту 5432
+3. Убедитесь, что все зависимости установлены
+4. Проверьте версии Node.js (требуется 18+)

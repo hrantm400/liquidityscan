@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart, IChartApi, ISeriesApi, ColorType } from 'lightweight-charts';
+import { createChart, IChartApi, ISeriesApi, ColorType, Time } from 'lightweight-charts';
 import { Candle, Signal } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -16,10 +16,9 @@ export function Chart({ candles, signals, symbol, timeframe, height = 400 }: Cha
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const { theme } = useTheme();
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 640);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
 
   useEffect(() => {
-    setIsMobile(window.innerWidth < 640);
     const handleResize = () => setIsMobile(window.innerWidth < 640);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -82,7 +81,7 @@ export function Chart({ candles, signals, symbol, timeframe, height = 400 }: Cha
     if (!seriesRef.current || !candles.length) return;
 
     const chartData = candles.map((candle) => ({
-      time: Math.floor(new Date(candle.openTime).getTime() / 1000) as any,
+      time: Math.floor(new Date(candle.openTime).getTime() / 1000) as Time,
       open: Number(candle.open),
       high: Number(candle.high),
       low: Number(candle.low),
@@ -94,7 +93,7 @@ export function Chart({ candles, signals, symbol, timeframe, height = 400 }: Cha
     // Add signal markers
     if (signals && signals.length > 0 && chartRef.current) {
       const markers = signals.map((signal) => ({
-        time: Math.floor(new Date(signal.detectedAt).getTime() / 1000) as any,
+        time: Math.floor(new Date(signal.detectedAt).getTime() / 1000) as Time,
         position: signal.signalType === 'BUY' ? ('belowBar' as const) : ('aboveBar' as const),
         color: signal.signalType === 'BUY' ? '#13ec37' : '#ff4444',
         shape: signal.signalType === 'BUY' ? ('arrowUp' as const) : ('arrowDown' as const),

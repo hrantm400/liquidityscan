@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { signalsApi } from '../services/api';
-import { wsService } from '../services/websocket';
 import { Signal, StrategyType } from '../types';
+import { fetchSignals } from '../services/signalsApi';
 
 interface UseMarketDataOptions {
   strategyType: StrategyType;
@@ -12,17 +11,15 @@ interface UseMarketDataOptions {
 }
 
 export const useMarketData = (options: UseMarketDataOptions) => {
-  const { strategyType, timeframe, limit = 1000, refetchInterval = 30000 } = options;
+  const { strategyType, timeframe, limit = 1000, refetchInterval = 60000 } = options;
   const [signals, setSignals] = useState<Signal[]>([]);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['signals', strategyType, timeframe],
     queryFn: () =>
-      signalsApi.getSignals({
-        strategyType,
-        timeframe: timeframe === 'all' ? undefined : (timeframe as any),
-        limit,
-      }),
+      strategyType === 'SUPER_ENGULFING'
+        ? fetchSignals('SUPER_ENGULFING', limit)
+        : Promise.resolve([] as Signal[]),
     refetchInterval,
   });
 
@@ -41,21 +38,22 @@ export const useMarketData = (options: UseMarketDataOptions) => {
     }
   }, [error, strategyType]);
 
-  useEffect(() => {
-    wsService.subscribeToStrategy(strategyType);
+  // TODO: Re-enable when WebSocket service is recreated
+  // useEffect(() => {
+  //   wsService.subscribeToStrategy(strategyType);
 
-    const handleNewSignal = (signal: Signal) => {
-      if (signal.strategyType === strategyType) {
-        setSignals((prev) => [signal, ...prev]);
-      }
-    };
+  //   const handleNewSignal = (signal: Signal) => {
+  //     if (signal.strategyType === strategyType) {
+  //       setSignals((prev) => [signal, ...prev]);
+  //     }
+  //   };
 
-    wsService.on('signal:new', handleNewSignal);
+  //   wsService.on('signal:new', handleNewSignal);
 
-    return () => {
-      wsService.off('signal:new', handleNewSignal);
-    };
-  }, [strategyType]);
+  //   return () => {
+  //     wsService.off('signal:new', handleNewSignal);
+  //   };
+  // }, [strategyType]);
 
   return {
     signals,

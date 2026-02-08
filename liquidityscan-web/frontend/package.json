@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
+    "build:check": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -14,13 +15,14 @@
     "@heroicons/react": "^2.2.0",
     "@tanstack/react-query": "^5.90.16",
     "framer-motion": "^12.24.11",
-    "lightweight-charts": "^5.1.0",
+    "lightweight-charts": "^4.2.0",
     "lucide-react": "^0.562.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-helmet-async": "^2.0.5",
     "react-is": "^19.2.3",
     "react-router-dom": "^7.11.0",
+    "react-ts-tradingview-widgets": "^1.2.8",
     "recharts": "^3.6.0",
     "socket.io-client": "^4.8.3",
     "zustand": "^5.0.9"

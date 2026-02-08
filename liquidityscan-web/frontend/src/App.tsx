@@ -20,29 +20,28 @@ const SignalDetails = lazy(() => import('./pages/SignalDetails').then(m => ({ de
 const StrategiesDashboard = lazy(() => import('./pages/StrategiesDashboard').then(m => ({ default: m.StrategiesDashboard })));
 const StrategyDetail = lazy(() => import('./pages/StrategyDetail').then(m => ({ default: m.StrategyDetail })));
 const ToolsDashboard = lazy(() => import('./pages/ToolsDashboard').then(m => ({ default: m.ToolsDashboard })));
-const Academy = lazy(() => import('./pages/Academy').then(m => ({ default: m.Academy })));
-const CourseDetail = lazy(() => import('./pages/CourseDetail').then(m => ({ default: m.CourseDetail })));
-const LessonView = lazy(() => import('./pages/LessonView').then(m => ({ default: m.LessonView })));
-
-// Admin Pages
-const AdminLayout = lazy(() => import('./pages/admin/AdminLayout').then(m => ({ default: m.AdminLayout })));
-const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
-const UsersManagement = lazy(() => import('./pages/admin/UsersManagement').then(m => ({ default: m.UsersManagement })));
-const CoursesManagement = lazy(() => import('./pages/admin/CoursesManagement').then(m => ({ default: m.CoursesManagement })));
-const SignalsManagement = lazy(() => import('./pages/admin/SignalsManagement').then(m => ({ default: m.SignalsManagement })));
-const Analytics = lazy(() => import('./pages/admin/Analytics').then(m => ({ default: m.Analytics })));
-const ContentManagement = lazy(() => import('./pages/admin/ContentManagement').then(m => ({ default: m.ContentManagement })));
-const AdminSettings = lazy(() => import('./pages/admin/AdminSettings').then(m => ({ default: m.AdminSettings })));
-const CourseEditor = lazy(() => import('./pages/admin/CourseEditor').then(m => ({ default: m.CourseEditor })));
 const DailyRecap = lazy(() => import('./pages/DailyRecap').then(m => ({ default: m.DailyRecap })));
 const RiskCalculator = lazy(() => import('./pages/RiskCalculator').then(m => ({ default: m.RiskCalculator })));
 const SuperEngulfing = lazy(() => import('./pages/SuperEngulfing').then(m => ({ default: m.SuperEngulfing })));
 const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
 const Support = lazy(() => import('./pages/Support').then(m => ({ default: m.Support })));
-const Subscription = lazy(() => import('./pages/Subscription').then(m => ({ default: m.Subscription })));
 const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 const Register = lazy(() => import('./pages/Register').then(m => ({ default: m.Register })));
 const Profile = lazy(() => import('./pages/Profile').then(m => ({ default: m.Profile })));
+const Subscriptions = lazy(() => import('./pages/Subscriptions').then(m => ({ default: m.Subscriptions })));
+const Payment = lazy(() => import('./pages/Payment').then(m => ({ default: m.Payment })));
+
+// Admin Pages
+const AdminLayout = lazy(() => import('./pages/admin/AdminLayout').then(m => ({ default: m.AdminLayout })));
+const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const UsersManagement = lazy(() => import('./pages/admin/UsersManagement').then(m => ({ default: m.UsersManagement })));
+const PaymentsManagement = lazy(() => import('./pages/admin/PaymentsManagement').then(m => ({ default: m.PaymentsManagement })));
+const Analytics = lazy(() => import('./pages/admin/Analytics').then(m => ({ default: m.Analytics })));
+const AdminSettings = lazy(() => import('./pages/admin/Settings').then(m => ({ default: m.Settings })));
+const CoursesManagement = lazy(() => import('./pages/admin/CoursesManagement').then(m => ({ default: m.CoursesManagement })));
+const AdminCourseDetail = lazy(() => import('./pages/admin/AdminCourseDetail').then(m => ({ default: m.AdminCourseDetail })));
+const Courses = lazy(() => import('./pages/Courses').then(m => ({ default: m.Courses })));
+const CourseDetail = lazy(() => import('./pages/CourseDetail').then(m => ({ default: m.CourseDetail })));
 
 const LoadingFallback = () => (
   <div className="flex items-center justify-center h-screen w-full bg-background-dark">
@@ -64,7 +63,7 @@ const queryClient = new QueryClient({
 
 function AppRoutes() {
   const location = useLocation();
-  
+
   return (
     <>
       <OAuthHandler />
@@ -74,12 +73,12 @@ function AppRoutes() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<AnimatedPage><Login /></AnimatedPage>} />
           <Route path="/register" element={<AnimatedPage><Register /></AnimatedPage>} />
-          
+
           {/* Redirect /app to dashboard */}
           <Route path="/app" element={<Navigate to="/dashboard" replace />} />
           <Route path="/app/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/app/dashboard" element={<Navigate to="/dashboard" replace />} />
-          
+
           {/* Protected Routes */}
           <Route element={<MainLayout />}>
             <Route path="dashboard" element={<AnimatedPage><Dashboard /></AnimatedPage>} />
@@ -90,28 +89,28 @@ function AppRoutes() {
             <Route path="strategies" element={<AnimatedPage><StrategiesDashboard /></AnimatedPage>} />
             <Route path="strategies/:id" element={<AnimatedPage><StrategyDetail /></AnimatedPage>} />
             <Route path="tools" element={<AnimatedPage><ToolsDashboard /></AnimatedPage>} />
-            <Route path="academy" element={<AnimatedPage><Academy /></AnimatedPage>} />
-            <Route path="academy/course/:courseId" element={<AnimatedPage><CourseDetail /></AnimatedPage>} />
-            <Route path="academy/course/:courseId/lesson/:lessonId" element={<AnimatedPage><LessonView /></AnimatedPage>} />
             <Route path="daily-recap" element={<AnimatedPage><DailyRecap /></AnimatedPage>} />
             <Route path="risk-calculator" element={<AnimatedPage><RiskCalculator /></AnimatedPage>} />
             <Route path="superengulfing" element={<SuperEngulfing />} />
             <Route path="settings" element={<AnimatedPage><Settings /></AnimatedPage>} />
             <Route path="support" element={<AnimatedPage><Support /></AnimatedPage>} />
-            <Route path="subscription" element={<AnimatedPage><Subscription /></AnimatedPage>} />
             <Route path="profile" element={<AnimatedPage><Profile /></AnimatedPage>} />
+            <Route path="courses" element={<AnimatedPage><Courses /></AnimatedPage>} />
+            <Route path="courses/:id" element={<AnimatedPage><CourseDetail /></AnimatedPage>} />
+            <Route path="subscription" element={<AnimatedPage><Subscriptions /></AnimatedPage>} />
+            <Route path="subscriptions" element={<AnimatedPage><Subscriptions /></AnimatedPage>} />
+            <Route path="payment/:id" element={<AnimatedPage><Payment /></AnimatedPage>} />
           </Route>
 
           {/* Admin Routes */}
-          <Route path="admin" element={<AdminLayout />}>
-            <Route index element={<AdminDashboard />} />
-            <Route path="users" element={<UsersManagement />} />
-            <Route path="courses" element={<CoursesManagement />} />
-            <Route path="courses/:courseId" element={<CourseEditor />} />
-            <Route path="signals" element={<SignalsManagement />} />
-            <Route path="analytics" element={<Analytics />} />
-            <Route path="content" element={<ContentManagement />} />
-            <Route path="settings" element={<AdminSettings />} />
+          <Route element={<AdminLayout />}>
+            <Route path="admin" element={<AnimatedPage><AdminDashboard /></AnimatedPage>} />
+            <Route path="admin/users" element={<AnimatedPage><UsersManagement /></AnimatedPage>} />
+            <Route path="admin/courses" element={<AnimatedPage><CoursesManagement /></AnimatedPage>} />
+            <Route path="admin/courses/:id" element={<AnimatedPage><AdminCourseDetail /></AnimatedPage>} />
+            <Route path="admin/payments" element={<AnimatedPage><PaymentsManagement /></AnimatedPage>} />
+            <Route path="admin/analytics" element={<AnimatedPage><Analytics /></AnimatedPage>} />
+            <Route path="admin/settings" element={<AnimatedPage><AdminSettings /></AnimatedPage>} />
           </Route>
         </Routes>
       </AnimatePresence>

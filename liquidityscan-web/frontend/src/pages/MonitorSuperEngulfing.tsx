@@ -1,8 +1,8 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams, Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { signalsApi } from '../services/api';
+// import { signalsApi } from '../services/api'; // TODO: Re-enable when API service is recreated
 import { Signal } from '../types';
 import { StaticMiniChart } from '../components/StaticMiniChart';
 import { FilterMenu } from '../components/shared/FilterMenu';
@@ -12,30 +12,33 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { AnimatedCard } from '../components/animations/AnimatedCard';
 import { AnimatedList } from '../components/animations/AnimatedList';
 import { useMarketData } from '../hooks/useMarketData';
+import { fetchCandles } from '../services/candles';
 import { useSignalFilter } from '../hooks/useSignalFilter';
 import { listItemVariants, scaleInVariants } from '../utils/animations';
+import { userApi } from '../services/userApi';
+import { useAuthStore } from '../store/authStore';
 
 // Component for signal card with static mini chart
 function SignalCardWithChart({ signal, isLong }: { signal: Signal; isLong: boolean }) {
   const { data: candlesData } = useQuery({
     queryKey: ['candles', signal.symbol, signal.timeframe, 'mini'],
-    queryFn: () => signalsApi.getCandles(signal.symbol, signal.timeframe, 50),
-    enabled: true,
+    queryFn: () => fetchCandles(signal.symbol, signal.timeframe, 50),
+    enabled: !!signal?.symbol && !!signal?.timeframe,
     staleTime: 300000,
   });
 
   const candles = candlesData || [];
 
   return (
-    <div className="h-32 w-full dark:bg-black/40 light:bg-gray-100 relative dark:border-y-white/5 light:border-y-green-200/30 border-y overflow-hidden">
+    <div className="h-40 w-full dark:bg-black/40 light:bg-gray-100 relative dark:border-y-white/5 light:border-y-green-200/30 border-y overflow-hidden group-hover:border-primary/20 transition-colors">
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent z-10 pointer-events-none" />
       <div
-        className={`absolute inset-0 ${
-          isLong
-            ? 'bg-[radial-gradient(circle_at_50%_100%,rgba(19,236,55,0.05),transparent_70%)]'
-            : 'bg-[radial-gradient(circle_at_50%_100%,rgba(239,68,68,0.05),transparent_70%)]'
-        } opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none z-10`}
+        className={`absolute inset-0 ${isLong
+          ? 'bg-[radial-gradient(circle_at_50%_100%,rgba(19,236,55,0.1),transparent_70%)]'
+          : 'bg-[radial-gradient(circle_at_50%_100%,rgba(239,68,68,0.1),transparent_70%)]'
+          } opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none z-10`}
       ></div>
-      <StaticMiniChart candles={candles} isLong={isLong} height={128} />
+      <StaticMiniChart candles={candles} isLong={isLong} height={160} />
     </div>
   );
 }
@@ -70,6 +73,7 @@ function formatTime(dateString: string) {
 export function MonitorSuperEngulfing() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [bullFilter, setBullFilter] = useState('All');
   const [bearFilter, setBearFilter] = useState('All');
@@ -84,6 +88,25 @@ export function MonitorSuperEngulfing() {
   const [selectedTimeframe, setSelectedTimeframe] = useState<string | null>(searchParams.get('timeframe') || null);
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<string | null>(null);
+
+  const { isAuthenticated } = useAuthStore();
+  const { data: mySubscription } = useQuery({
+    queryKey: ['mySubscription'],
+    queryFn: () => userApi.getMySubscription(),
+    enabled: isAuthenticated,
+  });
+  const isFreeForever = mySubscription?.subscription?.tier === 'SCOUT';
+  const allowedPairs: string[] | undefined = mySubscription?.subscription?.limits?.pairs;
+
+  // Free Forever: reset Rev+/Run+ to All when plan only allows Standard
+  useEffect(() => {
+    if (isFreeForever && (bullFilter === 'Run+' || bullFilter === 'Rev+' || bearFilter === 'Run+' || bearFilter === 'Rev+')) {
+      setBullFilter('All');
+      setBearFilter('All');
+    }
+  }, [isFreeForever]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync selectedTimeframe with URL
   useEffect(() => {
@@ -95,7 +118,7 @@ export function MonitorSuperEngulfing() {
   const { signals, isLoading } = useMarketData({
     strategyType: 'SUPER_ENGULFING',
     limit: 5000, // Increased limit to show all signals
-    refetchInterval: 30000,
+    refetchInterval: 60000,
   });
 
   // Use the new useSignalFilter hook
@@ -128,17 +151,29 @@ export function MonitorSuperEngulfing() {
     if (statusFilter === 'active') {
       result = result.filter(s => s.status === 'ACTIVE');
     } else if (statusFilter === 'closed') {
-      result = result.filter(s => s.status === 'CLOSED');
+      result = result.filter(s => s.status !== 'ACTIVE'); // CLOSED, EXPIRED, FILLED
     }
-    // If statusFilter === 'all', show all (no additional filtering needed)
     return result;
   }, [timeframeFilteredSignals, statusFilter]);
 
+  // Free Forever (SCOUT): restrict to allowed pairs only (BTC, ETH, EURUSD, XAUUSD)
+  const subscriptionFilteredSignals = useMemo(() => {
+    if (!isFreeForever || !allowedPairs?.length) return statusFilteredSignals;
+    return statusFilteredSignals.filter((s) =>
+      allowedPairs.some(
+        (p) =>
+          s.symbol === p ||
+          s.symbol.toUpperCase().startsWith(p.toUpperCase()) ||
+          s.symbol.toUpperCase().includes(p.toUpperCase())
+      )
+    );
+  }, [statusFilteredSignals, isFreeForever, allowedPairs]);
+
   // Pagination
-  const totalPages = Math.ceil(statusFilteredSignals.length / pageSize);
+  const totalPages = Math.ceil(subscriptionFilteredSignals.length / pageSize);
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = startIndex + pageSize;
-  const paginatedSignals = statusFilteredSignals.slice(startIndex, endIndex);
+  const paginatedSignals = subscriptionFilteredSignals.slice(startIndex, endIndex);
 
   // Debug: Log signals count (after statusFilteredSignals is defined)
   useEffect(() => {
@@ -157,9 +192,9 @@ export function MonitorSuperEngulfing() {
       console.log(`[SuperEngulfing] Signals by timeframe:`, byTimeframe);
       console.log(`[SuperEngulfing] Selected timeframe:`, selectedTimeframe);
       console.log(`[SuperEngulfing] Status filter:`, statusFilter);
-      console.log(`[SuperEngulfing] Filtered signals count:`, statusFilteredSignals.length);
+      console.log(`[SuperEngulfing] Filtered signals count:`, subscriptionFilteredSignals.length);
     }
-  }, [signals, selectedTimeframe, statusFilter, statusFilteredSignals]);
+  }, [signals, selectedTimeframe, statusFilter, subscriptionFilteredSignals]);
 
   // Reset to page 1 when filters change
   useEffect(() => {
@@ -196,22 +231,22 @@ export function MonitorSuperEngulfing() {
     // Get signals from last 24 hours
     const now = Date.now();
     const twentyFourHoursAgo = now - 24 * 60 * 60 * 1000;
-    
+
     const recentSignals = signals.filter(s => {
       const signalTime = new Date(s.detectedAt).getTime();
       return signalTime >= twentyFourHoursAgo;
     });
 
     // Calculate success rate (closed signals that were profitable)
-    const closedSignals = recentSignals.filter(s => s.status === 'CLOSED');
+    const closedSignals = recentSignals.filter(s => s.status !== 'ACTIVE');
     const profitableSignals = closedSignals.filter(s => {
       // Check if signal was profitable (this would need to be calculated from actual price movements)
       // For now, we'll use a simple heuristic based on signal type and metadata
       const metadata = s.metadata as any;
       return metadata?.profitability === 'PROFIT' || metadata?.outcome === 'WIN';
     });
-    
-    const successRate = closedSignals.length > 0 
+
+    const successRate = closedSignals.length > 0
       ? Math.round((profitableSignals.length / closedSignals.length) * 100)
       : 0;
 
@@ -223,8 +258,8 @@ export function MonitorSuperEngulfing() {
         return metadata?.riskReward || metadata?.riskRewardRatio || '1:2.5';
       })
       .filter(rr => rr);
-    
-    const avgRiskReward = riskRewardRatios.length > 0 
+
+    const avgRiskReward = riskRewardRatios.length > 0
       ? riskRewardRatios[0] // For now, use first available or default
       : '1:2.5';
 
@@ -239,7 +274,7 @@ export function MonitorSuperEngulfing() {
         return null;
       })
       .filter((d): d is number => d !== null);
-    
+
     const avgDuration = durations.length > 0
       ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
       : 45; // Default 45 minutes
@@ -250,7 +285,7 @@ export function MonitorSuperEngulfing() {
       const signalTime = new Date(s.detectedAt).getTime();
       return signalTime >= previousPeriod && signalTime < twentyFourHoursAgo;
     });
-    const previousClosed = previousSignals.filter(s => s.status === 'CLOSED');
+    const previousClosed = previousSignals.filter(s => s.status !== 'ACTIVE');
     const previousProfitable = previousClosed.filter(s => {
       const metadata = s.metadata as any;
       return metadata?.profitability === 'PROFIT' || metadata?.outcome === 'WIN';
@@ -258,7 +293,7 @@ export function MonitorSuperEngulfing() {
     const previousSuccessRate = previousClosed.length > 0
       ? Math.round((previousProfitable.length / previousClosed.length) * 100)
       : 0;
-    
+
     const successRateChange = successRate - previousSuccessRate;
 
     return {
@@ -286,6 +321,24 @@ export function MonitorSuperEngulfing() {
     setSelectedTimeframe(null); // Reset timeframe filter to show all
     setSearchParams({}); // Clear URL params
   }, [setSearchParams]);
+
+  const handleScanSuperEngulfing = useCallback(async () => {
+    setIsScanning(true);
+    setScanResult(null);
+    try {
+      const result = await signalsApi.scanSuperEngulfing(selectedTimeframe || undefined);
+      setScanResult(
+        `Scan completed! Generated ${result.totalSignals || 0} signals from ${result.symbolsScanned || 0} symbols across ${result.timeframesScanned || 0} timeframes.`
+      );
+      // Invalidate and refetch signals after scan
+      await queryClient.invalidateQueries({ queryKey: ['signals', 'SUPER_ENGULFING'] });
+      await queryClient.invalidateQueries({ queryKey: ['marketData'] });
+    } catch (error: any) {
+      setScanResult(`Error: ${error.message || 'Failed to start scan'}`);
+    } finally {
+      setIsScanning(false);
+    }
+  }, [selectedTimeframe]);
 
   if (isLoading) {
     return (
@@ -323,13 +376,12 @@ export function MonitorSuperEngulfing() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* 4H */}
             <AnimatedCard
-              className={`group relative flex flex-col justify-between p-5 rounded-xl dark:backdrop-blur-md border transition-all cursor-pointer h-36 ${
-                timeframeStats['4h'] > 0
-                  ? selectedTimeframe === '4h'
-                    ? 'dark:bg-[rgba(19,236,55,0.15)] light:bg-green-100 dark:border-primary light:border-green-400 dark:shadow-[0_0_20px_rgba(19,236,55,0.3)] light:shadow-[0_0_15px_rgba(19,236,55,0.2)] ring-2 ring-primary/50 scale-[1.02]'
-                    : 'dark:bg-[rgba(20,30,22,0.4)] light:bg-green-50 dark:border-[rgba(19,236,55,0.3)] light:border-green-400 hover:shadow-[0_0_20px_rgba(19,236,55,0.2)] hover:scale-[1.01]'
-                  : 'dark:bg-[rgba(20,30,22,0.2)] light:bg-green-50 dark:border-[#234829] light:border-green-300 opacity-50 cursor-not-allowed hover:opacity-60'
-              }`}
+              className={`group relative flex flex-col justify-between p-5 rounded-xl dark:backdrop-blur-md border transition-all cursor-pointer h-36 ${timeframeStats['4h'] > 0
+                ? selectedTimeframe === '4h'
+                  ? 'dark:bg-[rgba(19,236,55,0.15)] light:bg-green-100 dark:border-primary light:border-green-400 dark:shadow-[0_0_20px_rgba(19,236,55,0.3)] light:shadow-[0_0_15px_rgba(19,236,55,0.2)] ring-2 ring-primary/50 scale-[1.02]'
+                  : 'dark:bg-[rgba(20,30,22,0.4)] light:bg-green-50 dark:border-[rgba(19,236,55,0.3)] light:border-green-400 hover:shadow-[0_0_20px_rgba(19,236,55,0.2)] hover:scale-[1.01]'
+                : 'dark:bg-[rgba(20,30,22,0.2)] light:bg-green-50 dark:border-[#234829] light:border-green-300 opacity-50 cursor-not-allowed hover:opacity-60'
+                }`}
               onClick={() => {
                 if (timeframeStats['4h'] > 0) {
                   if (selectedTimeframe === '4h') {
@@ -355,11 +407,10 @@ export function MonitorSuperEngulfing() {
                   )}
                 </div>
                 {timeframeStats['4h'] > 0 ? (
-                  <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-[0_0_10px_rgba(19,236,55,0.2)] ${
-                    selectedTimeframe === '4h'
-                      ? 'text-primary bg-primary/20 border-primary/40'
-                      : 'text-primary bg-primary/10 border-primary/20'
-                  }`}>
+                  <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-[0_0_10px_rgba(19,236,55,0.2)] ${selectedTimeframe === '4h'
+                    ? 'text-primary bg-primary/20 border-primary/40'
+                    : 'text-primary bg-primary/10 border-primary/20'
+                    }`}>
                     <motion.span
                       className="w-1.5 h-1.5 rounded-full bg-primary"
                       animate={{ opacity: [1, 0.5, 1] }}
@@ -375,11 +426,10 @@ export function MonitorSuperEngulfing() {
               </div>
               <div className="mt-auto">
                 <span
-                  className={`text-5xl font-black tracking-tight ${
-                    timeframeStats['4h'] > 0
-                      ? 'text-primary drop-shadow-[0_0_12px_rgba(19,236,55,0.6)]'
-                      : 'dark:text-gray-700 light:text-text-light-secondary'
-                  }`}
+                  className={`text-5xl font-black tracking-tight ${timeframeStats['4h'] > 0
+                    ? 'text-primary drop-shadow-[0_0_12px_rgba(19,236,55,0.6)]'
+                    : 'dark:text-gray-700 light:text-text-light-secondary'
+                    }`}
                 >
                   {timeframeStats['4h']}
                 </span>
@@ -391,13 +441,12 @@ export function MonitorSuperEngulfing() {
 
             {/* 1D */}
             <AnimatedCard
-              className={`group relative flex flex-col justify-between p-5 rounded-xl dark:backdrop-blur-md border transition-all h-36 ${
-                timeframeStats['1d'] > 0
-                  ? selectedTimeframe === '1d'
-                    ? 'dark:bg-[rgba(19,236,55,0.15)] light:bg-green-100 dark:border-primary light:border-green-400 dark:shadow-[0_0_20px_rgba(19,236,55,0.3)] light:shadow-[0_0_15px_rgba(19,236,55,0.2)] ring-2 ring-primary/50 scale-[1.02] cursor-pointer'
-                    : 'dark:bg-[rgba(20,30,22,0.4)] light:bg-green-50 dark:border-[rgba(19,236,55,0.3)] light:border-green-400 hover:shadow-[0_0_20px_rgba(19,236,55,0.2)] hover:scale-[1.01] cursor-pointer'
-                  : 'dark:bg-[rgba(20,30,22,0.2)] light:bg-green-50 dark:border-[#234829] light:border-green-300 opacity-50 cursor-not-allowed hover:opacity-60'
-              }`}
+              className={`group relative flex flex-col justify-between p-5 rounded-xl dark:backdrop-blur-md border transition-all h-36 ${timeframeStats['1d'] > 0
+                ? selectedTimeframe === '1d'
+                  ? 'dark:bg-[rgba(19,236,55,0.15)] light:bg-green-100 dark:border-primary light:border-green-400 dark:shadow-[0_0_20px_rgba(19,236,55,0.3)] light:shadow-[0_0_15px_rgba(19,236,55,0.2)] ring-2 ring-primary/50 scale-[1.02] cursor-pointer'
+                  : 'dark:bg-[rgba(20,30,22,0.4)] light:bg-green-50 dark:border-[rgba(19,236,55,0.3)] light:border-green-400 hover:shadow-[0_0_20px_rgba(19,236,55,0.2)] hover:scale-[1.01] cursor-pointer'
+                : 'dark:bg-[rgba(20,30,22,0.2)] light:bg-green-50 dark:border-[#234829] light:border-green-300 opacity-50 cursor-not-allowed hover:opacity-60'
+                }`}
               onClick={() => {
                 if (timeframeStats['1d'] > 0) {
                   if (selectedTimeframe === '1d') {
@@ -423,11 +472,10 @@ export function MonitorSuperEngulfing() {
                   )}
                 </div>
                 {timeframeStats['1d'] > 0 ? (
-                  <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-[0_0_10px_rgba(19,236,55,0.2)] ${
-                    selectedTimeframe === '1d'
-                      ? 'text-primary bg-primary/20 border-primary/40'
-                      : 'text-primary bg-primary/10 border-primary/20'
-                  }`}>
+                  <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-[0_0_10px_rgba(19,236,55,0.2)] ${selectedTimeframe === '1d'
+                    ? 'text-primary bg-primary/20 border-primary/40'
+                    : 'text-primary bg-primary/10 border-primary/20'
+                    }`}>
                     <motion.span
                       className="w-1.5 h-1.5 rounded-full bg-primary"
                       animate={{ opacity: [1, 0.5, 1] }}
@@ -443,11 +491,10 @@ export function MonitorSuperEngulfing() {
               </div>
               <div className="mt-auto">
                 <span
-                  className={`text-5xl font-black tracking-tight ${
-                    timeframeStats['1d'] > 0
-                      ? 'text-primary drop-shadow-[0_0_12px_rgba(19,236,55,0.6)]'
-                      : 'dark:text-gray-700 light:text-text-light-secondary'
-                  }`}
+                  className={`text-5xl font-black tracking-tight ${timeframeStats['1d'] > 0
+                    ? 'text-primary drop-shadow-[0_0_12px_rgba(19,236,55,0.6)]'
+                    : 'dark:text-gray-700 light:text-text-light-secondary'
+                    }`}
                 >
                   {timeframeStats['1d']}
                 </span>
@@ -457,19 +504,18 @@ export function MonitorSuperEngulfing() {
               </div>
             </AnimatedCard>
 
-            {/* 1W */}
+            {/* 1W - hidden for Free Forever (4H and Daily only) */}
+            {!isFreeForever && (
             <AnimatedCard
-              className={`group relative flex flex-col justify-between p-5 rounded-xl dark:backdrop-blur-md border transition-all h-36 ${
-                timeframeStats['1w'] > 0
-                  ? selectedTimeframe === '1w'
-                    ? 'dark:bg-[rgba(19,236,55,0.15)] light:bg-green-100 dark:border-primary light:border-green-400 dark:shadow-[0_0_20px_rgba(19,236,55,0.3)] light:shadow-[0_0_15px_rgba(19,236,55,0.2)] ring-2 ring-primary/50 scale-[1.02] cursor-pointer'
-                    : 'dark:bg-[rgba(20,30,22,0.4)] light:bg-green-50 dark:border-[rgba(19,236,55,0.3)] light:border-green-400 hover:shadow-[0_0_20px_rgba(19,236,55,0.2)] hover:scale-[1.01] cursor-pointer'
-                  : 'dark:bg-[rgba(20,30,22,0.2)] light:bg-green-50 dark:border-[#234829] light:border-green-300 opacity-50 cursor-not-allowed hover:opacity-60'
-              }`}
+              className={`group relative flex flex-col justify-between p-5 rounded-xl dark:backdrop-blur-md border transition-all h-36 ${timeframeStats['1w'] > 0
+                ? selectedTimeframe === '1w'
+                  ? 'dark:bg-[rgba(19,236,55,0.15)] light:bg-green-100 dark:border-primary light:border-green-400 dark:shadow-[0_0_20px_rgba(19,236,55,0.3)] light:shadow-[0_0_15px_rgba(19,236,55,0.2)] ring-2 ring-primary/50 scale-[1.02] cursor-pointer'
+                  : 'dark:bg-[rgba(20,30,22,0.4)] light:bg-green-50 dark:border-[rgba(19,236,55,0.3)] light:border-green-400 hover:shadow-[0_0_20px_rgba(19,236,55,0.2)] hover:scale-[1.01] cursor-pointer'
+                : 'dark:bg-[rgba(20,30,22,0.2)] light:bg-green-50 dark:border-[#234829] light:border-green-300 opacity-50 cursor-not-allowed hover:opacity-60'
+                }`}
               onClick={() => {
                 if (timeframeStats['1w'] > 0) {
                   if (selectedTimeframe === '1w') {
-                    // If already selected, deselect to show all
                     setSearchParams({});
                     setSelectedTimeframe(null);
                   } else {
@@ -491,11 +537,10 @@ export function MonitorSuperEngulfing() {
                   )}
                 </div>
                 {timeframeStats['1w'] > 0 ? (
-                  <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-[0_0_10px_rgba(19,236,55,0.2)] ${
-                    selectedTimeframe === '1w'
-                      ? 'text-primary bg-primary/20 border-primary/40'
-                      : 'text-primary bg-primary/10 border-primary/20'
-                  }`}>
+                  <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-[0_0_10px_rgba(19,236,55,0.2)] ${selectedTimeframe === '1w'
+                    ? 'text-primary bg-primary/20 border-primary/40'
+                    : 'text-primary bg-primary/10 border-primary/20'
+                    }`}>
                     <motion.span
                       className="w-1.5 h-1.5 rounded-full bg-primary"
                       animate={{ opacity: [1, 0.5, 1] }}
@@ -511,11 +556,10 @@ export function MonitorSuperEngulfing() {
               </div>
               <div className="mt-auto">
                 <span
-                  className={`text-5xl font-black tracking-tight ${
-                    timeframeStats['1w'] > 0
-                      ? 'text-primary drop-shadow-[0_0_12px_rgba(19,236,55,0.6)]'
-                      : 'dark:text-gray-700 light:text-text-light-secondary'
-                  }`}
+                  className={`text-5xl font-black tracking-tight ${timeframeStats['1w'] > 0
+                    ? 'text-primary drop-shadow-[0_0_12px_rgba(19,236,55,0.6)]'
+                    : 'dark:text-gray-700 light:text-text-light-secondary'
+                    }`}
                 >
                   {timeframeStats['1w']}
                 </span>
@@ -524,6 +568,7 @@ export function MonitorSuperEngulfing() {
                 </span>
               </div>
             </AnimatedCard>
+            )}
           </div>
         </motion.div>
       )}
@@ -531,6 +576,47 @@ export function MonitorSuperEngulfing() {
       {/* Main Content */}
       <div className="flex-1 min-h-0 px-8 pb-8 flex flex-col">
         <div className="mx-auto w-full max-w-[1600px] flex flex-col gap-4 min-h-full">
+          {/* Manual Scan Button */}
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex items-center justify-between p-4 rounded-xl dark:bg-[rgba(19,236,55,0.05)] light:bg-green-50 dark:border border-primary/20 light:border-green-300"
+          >
+            <div className="flex flex-col">
+              <span className="text-sm font-bold dark:text-white light:text-text-dark">Manual Scan</span>
+              <span className="text-xs dark:text-gray-400 light:text-text-light-secondary">
+                Run SuperEngulfing scan manually to test the logic
+              </span>
+              {scanResult && (
+                <span className={`text-xs mt-1 ${scanResult.includes('Error') ? 'text-red-400' : 'text-primary'}`}>
+                  {scanResult}
+                </span>
+              )}
+            </div>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleScanSuperEngulfing}
+              disabled={isScanning}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-all ${isScanning
+                ? 'dark:bg-gray-700 light:bg-gray-300 dark:text-gray-400 light:text-text-light-secondary cursor-not-allowed'
+                : 'bg-primary text-black hover:bg-primary/90 shadow-[0_0_15px_rgba(19,236,55,0.3)]'
+                }`}
+            >
+              {isScanning ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                  <span>Scanning...</span>
+                </>
+              ) : (
+                <>
+                  <span className="material-symbols-outlined text-lg">radar</span>
+                  <span>Start Scan</span>
+                </>
+              )}
+            </motion.button>
+          </motion.div>
+
           {/* Filters Bar */}
           <div className="flex items-center gap-2.5 py-2 dark:bg-background-dark/50 dark:backdrop-blur-sm light:bg-green-50 sticky top-0 z-20 overflow-visible flex-nowrap shrink-0">
             {/* Search */}
@@ -556,6 +642,7 @@ export function MonitorSuperEngulfing() {
               type="bull"
               value={bullFilter}
               onChange={setBullFilter}
+              standardOnly={isFreeForever}
             />
             <div className="w-px h-5 dark:bg-white/10 light:bg-green-300 mx-1 shrink-0"></div>
 
@@ -564,6 +651,7 @@ export function MonitorSuperEngulfing() {
               type="bear"
               value={bearFilter}
               onChange={setBearFilter}
+              standardOnly={isFreeForever}
             />
             <div className="w-px h-5 dark:bg-white/10 light:bg-green-300 mx-1 shrink-0"></div>
 
@@ -573,11 +661,10 @@ export function MonitorSuperEngulfing() {
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={() => setFilterMenuOpen(!filterMenuOpen)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors group whitespace-nowrap ${
-                  filterMenuOpen
-                    ? 'dark:bg-white/10 light:bg-green-100 border-primary/30 dark:text-white light:text-text-dark active:bg-primary/10 active:border-primary/30'
-                    : 'dark:bg-white/5 light:bg-green-50 dark:border-white/10 light:border-green-300 dark:text-gray-300 light:text-text-light-secondary dark:hover:bg-white/10 light:hover:bg-green-100 dark:hover:text-white light:hover:text-text-dark'
-                }`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors group whitespace-nowrap ${filterMenuOpen
+                  ? 'dark:bg-white/10 light:bg-green-100 border-primary/30 dark:text-white light:text-text-dark active:bg-primary/10 active:border-primary/30'
+                  : 'dark:bg-white/5 light:bg-green-50 dark:border-white/10 light:border-green-300 dark:text-gray-300 light:text-text-light-secondary dark:hover:bg-white/10 light:hover:bg-green-100 dark:hover:text-white light:hover:text-text-dark'
+                  }`}
               >
                 <span className={`material-symbols-outlined text-sm ${filterMenuOpen ? 'text-primary' : 'group-hover:text-primary transition-colors'}`}>
                   filter_list
@@ -607,9 +694,8 @@ export function MonitorSuperEngulfing() {
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded transition-all ${
-                  viewMode === 'list' ? 'bg-primary text-black' : 'dark:text-gray-400 light:text-text-light-secondary dark:hover:text-white light:hover:text-text-dark'
-                }`}
+                className={`p-1.5 rounded transition-all ${viewMode === 'list' ? 'bg-primary text-black' : 'dark:text-gray-400 light:text-text-light-secondary dark:hover:text-white light:hover:text-text-dark'
+                  }`}
                 title="List View"
               >
                 <span className="material-symbols-outlined text-base">view_list</span>
@@ -618,9 +704,8 @@ export function MonitorSuperEngulfing() {
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setViewMode('grid')}
-                className={`p-1.5 rounded transition-all ${
-                  viewMode === 'grid' ? 'bg-primary text-black' : 'dark:text-gray-400 light:text-text-light-secondary dark:hover:text-white light:hover:text-text-dark'
-                }`}
+                className={`p-1.5 rounded transition-all ${viewMode === 'grid' ? 'bg-primary text-black' : 'dark:text-gray-400 light:text-text-light-secondary dark:hover:text-white light:hover:text-text-dark'
+                  }`}
                 title="Grid View"
               >
                 <span className="material-symbols-outlined text-base">grid_view</span>
@@ -642,7 +727,11 @@ export function MonitorSuperEngulfing() {
           <div className="flex-1 min-h-0 relative flex gap-4">
             {viewMode === 'list' ? (
               /* List View - Table */
-              <div className="flex-1 flex flex-col min-w-0 rounded-xl table-glass-panel dark:border-[#234829] light:border-green-300 overflow-hidden">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex-1 flex flex-col min-w-0 rounded-xl glass-panel overflow-hidden"
+              >
                 <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
                   <table className="w-full text-sm text-left dark:text-gray-400 light:text-text-light-secondary">
                     <thead className="text-[11px] uppercase dark:text-gray-500 light:text-text-light-secondary font-bold sticky top-0 dark:bg-[#0a140d] light:bg-green-50 dark:border-b-white/10 light:border-b-green-300 z-10 tracking-wider">
@@ -666,10 +755,10 @@ export function MonitorSuperEngulfing() {
                         paginatedSignals.map((signal, index) => (
                           <motion.tr
                             key={signal.id}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.05, duration: 0.3 }}
-                            className="dark:hover:bg-white/5 light:hover:bg-green-100 transition-colors cursor-pointer group"
+                            initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            transition={{ delay: index * 0.03, duration: 0.3 }}
+                            className="dark:hover:bg-white/[0.03] light:hover:bg-green-50 transition-all cursor-pointer group hover:shadow-[0_0_20px_rgba(0,0,0,0.2)] border-b border-transparent hover:border-primary/10 relative"
                             onClick={() => navigate(`/signals/${signal.id}`)}
                           >
                             <td className="px-6 py-2.5 font-bold dark:text-white light:text-text-dark whitespace-nowrap">
@@ -682,7 +771,21 @@ export function MonitorSuperEngulfing() {
                               Binance Perp
                             </td>
                             <td className="px-6 py-2.5 whitespace-nowrap dark:text-white light:text-text-dark">
-                              {signal.signalType === 'BUY' ? 'Bullish Engulfing' : 'Bearish Engulfing'}
+                              {(() => {
+                                const pattern = signal.metadata?.type || signal.metadata?.pattern || 'RUN';
+                                const direction = signal.signalType === 'BUY' ? 'Bullish' : 'Bearish';
+
+                                if (pattern === 'RUN_PLUS') {
+                                  return `${direction} Run+`;
+                                }
+                                if (pattern === 'REV_PLUS') {
+                                  return `${direction} Rev+`;
+                                }
+                                if (pattern === 'REV') {
+                                  return `${direction} Rev`;
+                                }
+                                return `${direction} Run`;
+                              })()}
                             </td>
                             <td className="px-6 py-2.5 text-center">
                               <SignalBadge signal={signal} />
@@ -722,7 +825,7 @@ export function MonitorSuperEngulfing() {
                         <option value={100}>100</option>
                       </select>
                       <span className="text-xs dark:text-gray-400 light:text-text-light-secondary">
-                        of {statusFilteredSignals.length} signals
+                        of {subscriptionFilteredSignals.length} signals
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -746,7 +849,7 @@ export function MonitorSuperEngulfing() {
                     </div>
                   </div>
                 )}
-              </div>
+              </motion.div>
             ) : (
               /* Grid View - Cards */
               <div className="flex-1 overflow-y-auto custom-scrollbar p-6 min-h-0">
@@ -765,9 +868,8 @@ export function MonitorSuperEngulfing() {
                         <AnimatedCard
                           key={signal.id}
                           onClick={() => navigate(`/signals/${signal.id}`)}
-                          className={`glass-panel rounded-2xl overflow-hidden relative group cursor-pointer flex flex-col ${
-                            isLong ? 'long-glow' : 'short-glow'
-                          }`}
+                          className={`glass-panel rounded-2xl overflow-hidden relative group cursor-pointer flex flex-col ${isLong ? 'long-glow' : 'short-glow'
+                            }`}
                         >
                           <div className="p-5 flex justify-between items-start z-10 relative">
                             <div className="flex flex-col">
@@ -775,11 +877,10 @@ export function MonitorSuperEngulfing() {
                               <span className="text-xs dark:text-gray-400 light:text-text-light-secondary font-mono mt-1">Binance Perp</span>
                             </div>
                             <span
-                              className={`px-3 py-1 rounded-full text-xs font-bold tracking-wider shadow-[0_0_10px_rgba(19,236,55,0.2)] ${
-                                isLong
-                                  ? 'bg-primary/10 border border-primary/20 text-primary'
-                                  : 'bg-danger/10 border border-danger/20 text-danger'
-                              }`}
+                              className={`px-3 py-1 rounded-full text-xs font-bold tracking-wider shadow-[0_0_10px_rgba(19,236,55,0.2)] ${isLong
+                                ? 'bg-primary/10 border border-primary/20 text-primary'
+                                : 'bg-danger/10 border border-danger/20 text-danger'
+                                }`}
                             >
                               {isLong ? 'LONG' : 'SHORT'}
                             </span>
@@ -842,7 +943,7 @@ export function MonitorSuperEngulfing() {
                         <option value={100}>100</option>
                       </select>
                       <span className="text-xs dark:text-gray-400 light:text-text-light-secondary">
-                        of {statusFilteredSignals.length} signals
+                        of {subscriptionFilteredSignals.length} signals
                       </span>
                     </div>
                     <div className="flex items-center gap-2">

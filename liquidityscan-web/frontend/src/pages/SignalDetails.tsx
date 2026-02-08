@@ -1,9 +1,9 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { signalsApi } from '../services/api';
 import { Signal } from '../types';
+import { fetchCandles } from '../services/candles';
 import { InteractiveLiveChart } from '../components/InteractiveLiveChart';
 import { SignalBadge } from '../components/shared/SignalBadge';
 import { scaleInVariants, fadeInVariants } from '../utils/animations';
@@ -24,35 +24,39 @@ interface Candle {
 export function SignalDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [candles, setCandles] = useState<Candle[]>([]);
 
   const { data: signal, isLoading } = useQuery({
     queryKey: ['signal', id],
-    queryFn: () => signalsApi.getSignalById(id!),
+    queryFn: (): Promise<Signal | null> => {
+      if (!id) return Promise.resolve(null);
+      const cached = [
+        queryClient.getQueryData<Signal[]>(['signals', 'SUPER_ENGULFING']),
+        queryClient.getQueryData<Signal[]>(['signals', 'ICT_BIAS']),
+        queryClient.getQueryData<Signal[]>(['signals', 'RSI_DIVERGENCE']),
+      ].filter(Boolean) as Signal[][];
+      for (const list of cached) {
+        const found = list.find((s) => s.id === id);
+        if (found) return Promise.resolve(found);
+      }
+      return Promise.resolve(null);
+    },
     enabled: !!id,
-    refetchInterval: 30000, // Refetch every 30 seconds
+    refetchInterval: 60000,
   });
 
-  // Fetch historical candles
+  // Fetch candle data from backend /api/candles (Binance klines)
   const { data: historicalCandles, isLoading: isLoadingCandles, error: candlesError } = useQuery({
     queryKey: ['candles', signal?.symbol, signal?.timeframe],
     queryFn: async () => {
-      try {
-        const result = await signalsApi.getCandles(signal!.symbol, signal!.timeframe, 500);
-        if (!result || (Array.isArray(result) && result.length === 0)) {
-          console.warn(`No candles returned for ${signal!.symbol} ${signal!.timeframe}`);
-          return [];
-        }
-        return Array.isArray(result) ? result : [];
-      } catch (error) {
-        console.error('Error fetching candles:', error);
-        return [];
-      }
+      if (!signal?.symbol || !signal?.timeframe) return [];
+      return fetchCandles(signal.symbol, signal.timeframe, 500);
     },
     enabled: !!signal?.symbol && !!signal?.timeframe,
-    retry: 3,
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    retry: 2,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
     staleTime: 60000,
   });
 
@@ -67,20 +71,21 @@ export function SignalDetails() {
   const handleCandleUpdate = useCallback((candle: Candle) => {
     setCandles(prev => {
       const updated = [...prev];
-      const index = updated.findIndex(c => 
+      const index = updated.findIndex(c =>
         new Date(c.openTime).getTime() === new Date(candle.openTime).getTime()
       );
-      
+
       if (index >= 0) {
         updated[index] = candle;
       } else {
         updated.push(candle);
         updated.sort((a, b) => new Date(a.openTime).getTime() - new Date(b.openTime).getTime());
       }
-      
+
       return updated;
     });
   }, []);
+
 
   if (isLoading) {
     return (
@@ -126,7 +131,8 @@ export function SignalDetails() {
   };
 
   const getPatternVariant = () => {
-    const pattern = signalData.metadata?.pattern || 'RUN';
+    // Support both old (pattern) and new (type) metadata fields
+    const pattern = signalData.metadata?.type || signalData.metadata?.pattern || 'RUN';
     if (pattern === 'RUN_PLUS') return 'Run+';
     if (pattern === 'REV_PLUS') return 'Rev+';
     if (pattern === 'REV') return 'Rev';
@@ -232,7 +238,7 @@ export function SignalDetails() {
                     </span>
                   </button>
                 </div>
-                
+
                 {showCandlesLoading ? (
                   <div className="relative flex-1 dark:bg-[#0b140d] light:bg-white rounded-xl overflow-hidden dark:border-white/5 light:border-green-200/50 flex items-center justify-center" style={{ minHeight: isFullscreen ? 'calc(100vh - 100px)' : '600px' }}>
                     <div className="flex flex-col items-center gap-4">
@@ -263,7 +269,7 @@ export function SignalDetails() {
                     />
                   </div>
                 )}
-                
+
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}

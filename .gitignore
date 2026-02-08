@@ -1,4 +1,9 @@
-# Environment variables only
+# Environment variables and secrets (do not commit)
 .env
 .env.local
 .env.*.local
+
+# Dependencies and build output (install/build on server)
+node_modules/
+dist/
+**/dist/

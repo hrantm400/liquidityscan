@@ -40,9 +40,9 @@ const AnimatedNumber = ({ value, prefix = "", suffix = "" }: { value: number, pr
 
 export const Stats: React.FC = () => {
   return (
-    <section className="py-20 border-y border-white/5 bg-[#0F1115]/30 backdrop-blur-sm relative overflow-hidden">
+    <section className="py-12 border-y border-white/5 bg-[#0A0A0A]/50 backdrop-blur-md relative overflow-hidden">
        {/* Decorative subtle grid */}
-       <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-soft-light pointer-events-none"></div>
+       <div className="absolute inset-0 bg-grid-pattern opacity-10 pointer-events-none"></div>
        <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-primary/20 to-transparent"></div>
        
       <div className="max-w-7xl mx-auto px-6 relative z-10">

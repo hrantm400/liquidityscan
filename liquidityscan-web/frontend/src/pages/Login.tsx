@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../store/authStore';
-import { authApi } from '../services/api';
+import { authApi, getApiBaseUrl } from '../services/userApi';
 
 export function Login() {
   const navigate = useNavigate();
@@ -15,7 +15,10 @@ export function Login() {
 
   // Redirect to dashboard if already logged in
   useEffect(() => {
-    if (user && token) {
+    // Only redirect if we have both user and token, and user has an id
+    // This prevents infinite redirects when token exists but user is not yet loaded
+    // Also check that we're not already on dashboard to prevent loops
+    if (token && user && user.id && window.location.pathname !== '/dashboard') {
       navigate('/dashboard', { replace: true });
     }
   }, [user, token, navigate]);
@@ -38,6 +41,16 @@ export function Login() {
       setUser(data.user);
       setToken(data.accessToken);
       setRefreshToken(data.refreshToken);
+      
+      // Fetch fresh profile to ensure isAdmin is up to date
+      try {
+        const profile = await authApi.getProfile();
+        setUser(profile);
+      } catch (profileError) {
+        console.error('Failed to fetch profile after login:', profileError);
+        // Continue anyway, user data from login should be sufficient
+      }
+      
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Failed to login');
@@ -47,8 +60,34 @@ export function Login() {
   };
 
   const handleGoogleLogin = () => {
-    // Redirect to Google OAuth
-    window.location.href = '/api/auth/google';
+    window.location.href = `${getApiBaseUrl()}/auth/google`;
+  };
+
+  const handleFastLogin = async () => {
+    setError('');
+    setLoading(true);
+
+    try {
+      const data = await authApi.fastLogin();
+      setUser(data.user);
+      setToken(data.accessToken);
+      setRefreshToken(data.refreshToken);
+      
+      // Fetch fresh profile to ensure isAdmin is up to date
+      try {
+        const profile = await authApi.getProfile();
+        setUser(profile);
+      } catch (profileError) {
+        console.error('Failed to fetch profile after fast login:', profileError);
+        // Continue anyway, user data from login should be sufficient
+      }
+      
+      navigate('/dashboard');
+    } catch (err: any) {
+      setError(err.message || 'Fast login failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -88,6 +127,20 @@ export function Login() {
             >
               {error}
             </motion.div>
+          )}
+
+          {/* Fast Login Button (Dev Only) */}
+          {import.meta.env.DEV && (
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleFastLogin}
+              disabled={loading}
+              className="w-full mb-4 flex items-center justify-center gap-3 px-4 py-3 rounded-xl bg-yellow-500/20 border border-yellow-500/30 text-yellow-400 hover:bg-yellow-500/30 transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="material-symbols-outlined text-lg">bolt</span>
+              Fast Login (Dev)
+            </motion.button>
           )}
 
           {/* Google Login Button */}

@@ -1,10 +1,13 @@
 import { useEffect, useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { authApi } from '../services/api';
+// import { authApi } from '../services/api'; // TODO: Re-enable when API service is recreated
 import { User } from '../types';
 import { motion } from 'framer-motion';
+import { ReferralSection } from '../components/ReferralSection';
 
 export function Profile() {
+  const navigate = useNavigate();
   const { user, setUser, logout, token } = useAuthStore();
   const [profile, setProfile] = useState<User | null>(user);
   const [loading, setLoading] = useState(!user);
@@ -29,17 +32,19 @@ export function Profile() {
       }
       
       // If no user, try to fetch from API
-      try {
-        setLoading(true);
-        const data = await authApi.getProfile();
-        setProfile(data);
-        setUser(data);
-      } catch (err: any) {
-        console.error('[Profile] Failed to fetch profile:', err);
-        setError(err.message || 'Failed to load profile');
-      } finally {
-        setLoading(false);
-      }
+      // TODO: Re-enable when API service is recreated
+      // try {
+      //   setLoading(true);
+      //   const data = await authApi.getProfile();
+      //   setProfile(data);
+      //   setUser(data);
+      // } catch (err: any) {
+      //   console.error('[Profile] Failed to fetch profile:', err);
+      //   setError(err.message || 'Failed to load profile');
+      // } finally {
+      //   setLoading(false);
+      // }
+      setLoading(false);
     };
 
     fetchProfile();
@@ -170,12 +175,15 @@ export function Profile() {
           </div>
         </div>
 
+        {/* Referral Section */}
+        <ReferralSection />
+
         {/* Actions */}
         <div className="flex gap-4">
           <button
             onClick={() => {
               logout();
-              window.location.href = '/app/login';
+              navigate('/login', { replace: true });
             }}
             className="px-6 py-3 bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl font-bold hover:bg-red-500/20 transition-all"
           >

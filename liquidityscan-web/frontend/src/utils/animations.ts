@@ -26,6 +26,7 @@ export const pageVariants: Variants = {
 
 // Stagger container for list items
 export const staggerContainer: Variants = {
+  initial: {},
   animate: {
     transition: {
       staggerChildren: 0.05,
@@ -156,5 +157,32 @@ export const flashVariants: Variants = {
       duration: 0.5,
       ease: 'easeInOut',
     },
+  },
+};
+
+// Subscription card entrance (spring)
+export const cardEnterSpring = {
+  initial: { opacity: 0, y: 50, scale: 0.95 },
+  animate: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { type: 'spring' as const, stiffness: 120, damping: 20 },
+  },
+};
+
+// Table row stagger for feature comparison
+export const tableRowStagger: Variants = {
+  initial: {},
+  animate: {
+    transition: { staggerChildren: 0.06 },
+  },
+};
+export const tableRowItem: Variants = {
+  initial: { opacity: 0, y: 12 },
+  animate: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.3, ease: 'easeOut' },
   },
 };

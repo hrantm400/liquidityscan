@@ -1,98 +1,127 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# LiquidityScan Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS backend API for LiquidityScan platform.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Setup
 
-## Description
+### Database Setup (Local PostgreSQL)
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Install PostgreSQL locally and ensure it is running on port **5432**. Create a database (e.g. `liquidityscan_db`) and a user with access. Set `DATABASE_URL` in `.env` to match your credentials.
 
-## Project setup
+### Backend Setup
 
+1. Install dependencies:
 ```bash
-$ npm install
+npm install
 ```
 
-## Compile and run the project
-
+2. Create `.env` file (copy from `.env.example`):
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+cp .env.example .env
 ```
 
-## Run tests
+3. Update `.env` with your configuration:
+- `DATABASE_URL` - PostgreSQL connection string, e.g. `postgresql://postgres:password@localhost:5432/liquidityscan_db?schema=public` (port 5432)
+- `JWT_SECRET` - Secret key for JWT tokens
+- `GOOGLE_CLIENT_ID` - Google OAuth Client ID
+- `GOOGLE_CLIENT_SECRET` - Google OAuth Client Secret
+- `GOOGLE_CALLBACK_URL` - Google OAuth callback URL (e.g., `http://localhost:3000/api/auth/google/callback`)
 
+4. Setup database:
 ```bash
-# unit tests
-$ npm run test
+# Generate Prisma Client
+npm run prisma:generate
 
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+# Run migrations (creates all tables)
+npm run prisma:migrate
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
+5. Start development server:
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run start:dev
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Google OAuth Setup
 
-## Resources
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select existing one
+3. Enable Google+ API
+4. Go to "Credentials" → "Create Credentials" → "OAuth 2.0 Client ID"
+5. Set Application type to "Web application"
+6. Add Authorized redirect URIs:
+   - `http://localhost:3000/api/auth/google/callback` (development)
+   - Your production URL (production)
+7. Copy Client ID and Client Secret to `.env`
 
-Check out a few resources that may come in handy when working with NestJS:
+## API Endpoints
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+### Auth
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - Login
+- `GET /api/auth/google` - Google OAuth
+- `GET /api/auth/google/callback` - Google OAuth callback
+- `GET /api/auth/me` - Get current user profile
+- `POST /api/auth/refresh` - Refresh access token
 
-## Support
+### Academy
+- `GET /api/academy/categories` - Get all categories
+- `GET /api/academy/courses` - Get courses (with filters)
+- `GET /api/academy/courses/:id` - Get course details
+- `POST /api/academy/courses/:id/enroll` - Enroll in course
+- `GET /api/academy/my-courses` - Get user's enrolled courses
+- `GET /api/academy/courses/:id/lessons` - Get course lessons
+- `GET /api/academy/lessons/:id` - Get lesson details
+- `PUT /api/academy/lessons/:id/progress` - Update lesson progress
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+### Admin
+- `GET /api/admin/analytics` - Get analytics
+- `GET /api/admin/users` - Get users
+- `PUT /api/admin/users/:id` - Update user
+- `DELETE /api/admin/users/:id` - Delete user
+- `GET /api/admin/categories` - Get categories
+- `POST /api/admin/categories` - Create category
+- `PUT /api/admin/categories/:id` - Update category
+- `DELETE /api/admin/categories/:id` - Delete category
+- `GET /api/admin/courses` - Get courses
+- `POST /api/admin/courses` - Create course
+- `PUT /api/admin/courses/:id` - Update course
+- `DELETE /api/admin/courses/:id` - Delete course
+- `GET /api/admin/payments` - Get payments
 
-## Stay in touch
+### Payments
+- `POST /api/payments/create` - Create payment
+- `GET /api/payments/status/:id` - Get payment status
+- `PUT /api/payments/status/:id` - Update payment status
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+## Database Schema
 
-## License
+See `prisma/schema.prisma` for full database schema.
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Main models:
+- `User` - Users
+- `Course` - Courses
+- `Lesson` - Lessons
+- `Category` - Categories
+- `CourseEnrollment` - User course enrollments
+- `CourseProgress` - User lesson progress
+- `Payment` - Payments
+- `Subscription` - Subscriptions
+
+## Development
+
+```bash
+# Watch mode
+npm run start:dev
+
+# Build
+npm run build
+
+# Production
+npm run start:prod
+```
+
+## Testing
+
+```bash
+npm test
+```

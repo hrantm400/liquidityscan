@@ -1,22 +1,16 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
-import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
-import { StrategiesModule } from './strategies/strategies.module';
-import { ExchangesModule } from './exchanges/exchanges.module';
-import { SignalsModule } from './signals/signals.module';
-import { WebSocketModule } from './websocket/websocket.module';
-import { SubscriptionsModule } from './subscriptions/subscriptions.module';
-import { IntegrationsModule } from './integrations/integrations.module';
 import { AdminModule } from './admin/admin.module';
-import { MarketAnalyzerService } from './common/scheduler/market-analyzer.service';
-import { MarketAnalyzerController } from './common/scheduler/market-analyzer.controller';
-import { CacheModule } from './common/cache/cache.module';
+import { PaymentsModule } from './payments/payments.module';
+import { CoursesModule } from './courses/courses.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { CandlesModule } from './candles/candles.module';
+import { SignalsModule } from './signals/signals.module';
 
 @Module({
   imports: [
@@ -24,26 +18,17 @@ import { CacheModule } from './common/cache/cache.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
-    ScheduleModule.forRoot(),
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60000, // 1 minute
-        limit: 100, // 100 requests per minute
-      },
-    ]),
     PrismaModule,
-    CacheModule,
     AuthModule,
     UsersModule,
-    StrategiesModule,
-    ExchangesModule,
-    SignalsModule,
-    WebSocketModule,
-    SubscriptionsModule,
-    IntegrationsModule,
     AdminModule,
+    PaymentsModule,
+    CoursesModule,
+    SubscriptionsModule,
+    CandlesModule,
+    SignalsModule,
   ],
-  controllers: [AppController, MarketAnalyzerController],
-  providers: [AppService, MarketAnalyzerService],
+  controllers: [AppController],
+  providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }

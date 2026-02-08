@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { createChart, ColorType, Time, CandlestickSeries, HistogramSeries } from 'lightweight-charts';
-import { wsService } from '../services/websocket';
+import { createChart, ColorType, Time } from 'lightweight-charts';
+// import { wsService } from '../services/websocket'; // TODO: Re-enable when WebSocket service is recreated
 import { useTheme } from '../contexts/ThemeContext';
+import { TradingViewWidget } from './TradingViewWidget';
+// import { api } from '../services/api'; // TODO: Re-enable when API service is recreated
 
 // Type definitions for lightweight-charts
 type IChartApi = ReturnType<typeof createChart>;
@@ -28,7 +30,7 @@ interface Signal {
   signalType: 'BUY' | 'SELL';
   detectedAt: Date | string;
   price: number | string;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 interface InteractiveLiveChartProps {
@@ -55,18 +57,40 @@ export function InteractiveLiveChart({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [showTradingView, setShowTradingView] = useState(false);
   const [currentPrice, setCurrentPrice] = useState<number | null>(null);
   const [priceChange, setPriceChange] = useState<number>(0);
   const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
+  const [ictBias, setIctBias] = useState<{ bias: string; message: string } | null>(null);
   const candlesRef = useRef<Candle[]>([]);
   const updateQueueRef = useRef<Candle[]>([]);
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Fetch ICT Bias
+  // TODO: Re-enable when API service is recreated
+  // useEffect(() => {
+  //   if (!candles || candles.length < 3) return;
+
+  //   const fetchBias = async () => {
+  //     try {
+  //       // Send last 10 candles to optimize payload
+  //       const recentCandles = candles.slice(-10);
+  //       const result = await api.post<any>('/strategies/ict-bias', recentCandles);
+  //       setIctBias(result);
+  //     } catch (error) {
+  //       console.error('Error fetching ICT bias:', error);
+  //     }
+  //   };
+
+  //   // Debounce fetch
+  //   const timeout = setTimeout(fetchBias, 2000);
+  //   return () => clearTimeout(timeout);
+  // }, [candles.length, symbol, timeframe]); // Only re-fetch when candle count changes (new candle) or context changes
+
   // Initialize chart
   useEffect(() => {
-    if (!chartContainerRef.current) return;
+    if (showTradingView || !chartContainerRef.current) return;
 
     // Clean up previous chart
     if (chartRef.current) {
@@ -77,14 +101,13 @@ export function InteractiveLiveChart({
       }
       chartRef.current = null;
       candlestickSeriesRef.current = null;
-      volumeSeriesRef.current = null;
       setIsInitialized(false);
     }
 
     // Wait for container to have dimensions
     let retryCount = 0;
     const maxRetries = 50; // Max 5 seconds (50 * 100ms)
-    
+
     const initChart = () => {
       if (!chartContainerRef.current) {
         if (retryCount < maxRetries) {
@@ -99,7 +122,7 @@ export function InteractiveLiveChart({
       const container = chartContainerRef.current;
       const containerWidth = container.clientWidth;
       const containerHeight = container.clientHeight || (isFullscreen ? window.innerHeight - 100 : height);
-      
+
       if (containerWidth === 0 || containerHeight === 0) {
         if (retryCount < maxRetries) {
           retryCount++;
@@ -127,27 +150,36 @@ export function InteractiveLiveChart({
 
         const chart = createChart(container, {
           layout: {
-            background: { type: ColorType.Solid, color: isDark ? '#0b140d' : '#ffffff' },
+            background: { type: ColorType.Solid, color: isDark ? '#0a0e0b' : '#ffffff' },
             textColor: isDark ? '#ffffff' : '#1a1a1a',
-            fontSize: 12,
+            fontSize: 11,
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
             attributionLogo: false,
           },
           grid: {
-            vertLines: { color: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(19, 236, 55, 0.1)', style: 0 },
-            horzLines: { color: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(19, 236, 55, 0.1)', style: 0 },
+            vertLines: {
+              color: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(19, 236, 55, 0.05)',
+              style: 0,
+              visible: true,
+            },
+            horzLines: {
+              color: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(19, 236, 55, 0.05)',
+              style: 0,
+              visible: true,
+            },
           },
           width: chartWidth,
           height: chartHeight,
           timeScale: {
             timeVisible: true,
             secondsVisible: false,
-            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(19, 236, 55, 0.2)',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(19, 236, 55, 0.15)',
             rightOffset: 12,
-            barSpacing: 8,
-            minBarSpacing: 2,
+            barSpacing: 10,
+            minBarSpacing: 3,
           },
           rightPriceScale: {
-            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(19, 236, 55, 0.2)',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(19, 236, 55, 0.15)',
             scaleMargins: {
               top: 0.1,
               bottom: 0.1,
@@ -159,13 +191,13 @@ export function InteractiveLiveChart({
               color: isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(19, 236, 55, 0.4)',
               width: 1,
               style: 0,
-              labelBackgroundColor: '#13ec37',
+              labelBackgroundColor: isDark ? '#13ec37' : '#13ec37',
             },
             horzLine: {
               color: isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(19, 236, 55, 0.4)',
               width: 1,
               style: 0,
-              labelBackgroundColor: '#13ec37',
+              labelBackgroundColor: isDark ? '#13ec37' : '#13ec37',
             },
           },
         });
@@ -175,22 +207,15 @@ export function InteractiveLiveChart({
           return;
         }
 
-        // Check if addSeries is available (v5.x API)
-        if (typeof chart.addSeries !== 'function') {
-          console.error('Chart object does not have addSeries method.');
-          console.error('Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(chart)));
-          return;
-        }
-
-        console.log('Chart created successfully, adding candlestick series...');
-
-        // Add candlestick series using v5.x API
+        // Add candlestick series using v4.x API
         let candlestickSeries;
         try {
-          candlestickSeries = chart.addSeries(CandlestickSeries, {
+          candlestickSeries = chart.addCandlestickSeries({
             upColor: '#13ec37',
             downColor: '#ff4444',
-            borderVisible: false,
+            borderVisible: true,
+            borderUpColor: '#13ec37',
+            borderDownColor: '#ff4444',
             wickUpColor: '#13ec37',
             wickDownColor: '#ff4444',
             priceFormat: {
@@ -205,29 +230,8 @@ export function InteractiveLiveChart({
           return;
         }
 
-        // Add volume series using v5.x API
-        let volumeSeries;
-        try {
-          volumeSeries = chart.addSeries(HistogramSeries, {
-            color: '#26a69a',
-            priceFormat: {
-              type: 'volume',
-            },
-            priceScaleId: '',
-            scaleMargins: {
-              top: 0.8,
-              bottom: 0,
-            },
-          });
-          console.log('Volume series added successfully');
-        } catch (volumeError) {
-          console.error('Error adding volume series:', volumeError);
-          // Continue without volume series
-        }
-
         chartRef.current = chart;
         candlestickSeriesRef.current = candlestickSeries;
-        volumeSeriesRef.current = volumeSeries;
         setIsInitialized(true);
         console.log('Chart initialization completed successfully');
 
@@ -261,7 +265,6 @@ export function InteractiveLiveChart({
             }
             chartRef.current = null;
             candlestickSeriesRef.current = null;
-            volumeSeriesRef.current = null;
             setIsInitialized(false);
           }
         };
@@ -283,20 +286,19 @@ export function InteractiveLiveChart({
         }
         chartRef.current = null;
         candlestickSeriesRef.current = null;
-        volumeSeriesRef.current = null;
         setIsInitialized(false);
       }
     };
-  }, [height, isFullscreen, theme, isDark]);
+  }, [height, isFullscreen, theme, isDark, showTradingView]);
 
   // Update chart with candles data (with performance optimization)
   useEffect(() => {
-    if (!isInitialized || !candlestickSeriesRef.current || !volumeSeriesRef.current || candles.length === 0) {
+    if (!isInitialized || !candlestickSeriesRef.current || candles.length === 0) {
       return;
     }
 
-    // Limit candles to prevent performance issues (keep last 1000 candles)
-    const maxCandles = 1000;
+    // Limit candles to prevent performance issues (keep last 3000 candles for better chart view)
+    const maxCandles = 3000;
     const candlesToUse = candles.length > maxCandles ? candles.slice(-maxCandles) : candles;
 
     try {
@@ -309,22 +311,14 @@ export function InteractiveLiveChart({
         close: candle.close,
       }));
 
-      // Prepare volume data
-      const volumeData = candlesToUse.map((candle) => ({
-        time: Math.floor(new Date(candle.openTime).getTime() / 1000) as Time,
-        value: candle.volume,
-        color: candle.close >= candle.open ? 'rgba(19, 236, 55, 0.3)' : 'rgba(255, 68, 68, 0.3)',
-      }));
-
       // Update series
       candlestickSeriesRef.current.setData(chartData);
-      volumeSeriesRef.current.setData(volumeData);
 
       // Update current price
       if (candlesToUse.length > 0) {
         const lastCandle = candlesToUse[candlesToUse.length - 1];
         const prevCandle = candlesToUse.length > 1 ? candlesToUse[candlesToUse.length - 2] : null;
-        
+
         setCurrentPrice(lastCandle.close);
         if (prevCandle) {
           setPriceChange(((lastCandle.close - prevCandle.close) / prevCandle.close) * 100);
@@ -333,67 +327,154 @@ export function InteractiveLiveChart({
 
       // Add signal marker and special visual elements if signal exists
       if (signal && chartRef.current && chartData.length > 0) {
-        const signalTime = Math.floor(new Date(signal.detectedAt).getTime() / 1000) as Time;
-        
-        // Enhanced signal marker with animation class
-        candlestickSeriesRef.current.setMarkers([
-          {
+        // Find the candle that matches the signal detection time
+        const signalDetectedTime = Math.floor(new Date(signal.detectedAt).getTime() / 1000);
+
+        // Search ALL candles for the one closest to signal time
+        let signalCandleIndex = -1;
+        let bestDiff = Infinity;
+
+        for (let i = 0; i < chartData.length; i++) {
+          const candleTime = chartData[i].time as number;
+          const diff = Math.abs(candleTime - signalDetectedTime);
+          if (diff < bestDiff) {
+            bestDiff = diff;
+            signalCandleIndex = i;
+          }
+        }
+
+        console.log('Signal info:', {
+          signalDetectedTime: new Date(signalDetectedTime * 1000).toISOString(),
+          foundCandleIndex: signalCandleIndex,
+          foundCandleTime: signalCandleIndex >= 0 ? new Date((chartData[signalCandleIndex].time as number) * 1000).toISOString() : null,
+          timeDiffSeconds: bestDiff,
+          signalType: signal.signalType,
+          pattern: signal.metadata?.type || signal.metadata?.pattern
+        });
+
+        if (signalCandleIndex >= 0) {
+          const signalTime = chartData[signalCandleIndex].time;
+
+          // Get pattern type from metadata for better label
+          const patternType = signal.metadata?.type || signal.metadata?.pattern || '';
+          const direction = signal.signalType === 'BUY' ? 'LONG' : 'SHORT';
+
+          // Format pattern label
+          let patternLabel = '';
+          if (patternType) {
+            // Remove XL and 2X from label logic
+            const formattedType = patternType
+              .replace('_PLUS', '+')
+              .replace('_XL', '')
+              .replace('_2X', '')
+              .replace('_', ' ');
+            patternLabel = formattedType;
+          } else {
+            patternLabel = direction;
+          }
+
+          // Always use arrows for clear visibility
+          const markerShape = signal.signalType === 'BUY' ? 'arrowUp' as const : 'arrowDown' as const;
+
+          const marker = {
             time: signalTime,
-            position: signal.signalType === 'BUY' ? ('belowBar' as const) : ('aboveBar' as const),
+            position: signal.signalType === 'BUY' ? 'belowBar' as const : 'aboveBar' as const,
             color: signal.signalType === 'BUY' ? '#13ec37' : '#ff4444',
-            shape: signal.signalType === 'BUY' ? ('arrowUp' as const) : ('arrowDown' as const),
-            text: signal.signalType === 'BUY' ? 'LONG' : 'SHORT',
-            size: 2,
-          },
-        ]);
+            shape: markerShape,
+            text: patternLabel || direction,
+            size: 2, // Size 2 is good for arrows
+          };
 
-        // Add liquidity sweep line (lowest point before signal)
-        const signalIndex = chartData.findIndex(c => c.time >= signalTime);
-        if (signalIndex > 0) {
-          const candlesBeforeSignal = chartData.slice(0, signalIndex);
-          const lowestCandle = candlesBeforeSignal.reduce((min, c) => c.low < min.low ? c : min, candlesBeforeSignal[0]);
-          
-          const liquiditySweepLine = chartRef.current.addLineSeries({
-            color: '#ff4444',
-            lineWidth: 1,
-            lineStyle: 2, // Dashed
-            priceLineVisible: true,
-            lastValueVisible: true,
-            title: 'Liquidity Sweep',
-          });
-          
-          liquiditySweepLine.setData([
-            { time: chartData[0].time, value: lowestCandle.low },
-            { time: signalTime, value: lowestCandle.low },
-          ]);
-          
-          // Store reference for cleanup
-          (chartRef.current as any).liquiditySweepLine = liquiditySweepLine;
+          try {
+            candlestickSeriesRef.current.setMarkers([marker]);
+          } catch (error) {
+            console.error('Error setting marker:', error);
+          }
+
+          // Add liquidity sweep line (lowest point before signal)
+          if (signalCandleIndex > 0) {
+            const candlesBeforeSignal = chartData.slice(0, signalCandleIndex);
+            const lowestCandle = candlesBeforeSignal.reduce((min, c) => c.low < min.low ? c : min, candlesBeforeSignal[0]);
+
+            // Clean up previous line if exists
+            if ((chartRef.current as any).liquiditySweepLine) {
+              try {
+                chartRef.current.removeSeries((chartRef.current as any).liquiditySweepLine);
+              } catch (e) {
+                // Ignore cleanup errors
+              }
+            }
+
+            // In v4 addLineSeries exists
+            const liquiditySweepLine = chartRef.current.addLineSeries({
+              color: '#ff4444',
+              lineWidth: 1,
+              lineStyle: 2, // Dashed
+              priceLineVisible: true,
+              lastValueVisible: true,
+              title: 'Liquidity Sweep',
+            });
+
+            // Fix type error for Time arithmetic in v4
+            const startTime = chartData[0].time as any;
+            const endTime = signalTime as any;
+
+            if (startTime < endTime) {
+              liquiditySweepLine.setData([
+                { time: startTime, value: lowestCandle.low },
+                { time: endTime, value: lowestCandle.low },
+              ]);
+              // Store reference for cleanup
+              (chartRef.current as any).liquiditySweepLine = liquiditySweepLine;
+            } else {
+              chartRef.current.removeSeries(liquiditySweepLine);
+            }
+          }
+
+          // Add displacement line (from signal point)
+          if (signalCandleIndex >= 0 && signalCandleIndex < chartData.length) {
+            const signalCandle = chartData[signalCandleIndex];
+
+            // Clean up previous line if exists
+            if ((chartRef.current as any).displacementLine) {
+              try {
+                chartRef.current.removeSeries((chartRef.current as any).displacementLine);
+              } catch (e) {
+                // Ignore cleanup errors
+              }
+            }
+
+            const displacementLine = chartRef.current.addLineSeries({
+              color: signal.signalType === 'BUY' ? '#13ec37' : '#ff4444',
+              lineWidth: 2,
+              lineStyle: 0, // Solid
+              priceLineVisible: true,
+              lastValueVisible: true,
+              title: 'Entry Price',
+            });
+
+            // Use signal price if available, otherwise use candle close
+            const entryPrice = typeof signal.price === 'number' ? signal.price : signalCandle.close;
+
+            // Fix type error for Time arithmetic in v4
+            const entryStartTime = signalTime as any;
+            const entryEndTime = chartData[chartData.length - 1].time as any;
+
+            if (entryStartTime < entryEndTime) {
+              displacementLine.setData([
+                { time: entryStartTime, value: entryPrice },
+                { time: entryEndTime, value: entryPrice },
+              ]);
+              // Store reference for cleanup
+              (chartRef.current as any).displacementLine = displacementLine;
+            } else {
+              chartRef.current.removeSeries(displacementLine);
+            }
+          }
+
+          // Fit content to show signal
+          chartRef.current.timeScale().fitContent();
         }
-
-        // Add displacement line (from signal point)
-        if (signalIndex >= 0 && signalIndex < chartData.length) {
-          const signalCandle = chartData[signalIndex];
-          const displacementLine = chartRef.current.addLineSeries({
-            color: '#13ec37',
-            lineWidth: 2,
-            lineStyle: 0, // Solid
-            priceLineVisible: true,
-            lastValueVisible: true,
-            title: 'Displacement',
-          });
-          
-          displacementLine.setData([
-            { time: signalTime, value: signalCandle.close },
-            { time: chartData[chartData.length - 1].time, value: signalCandle.close },
-          ]);
-          
-          // Store reference for cleanup
-          (chartRef.current as any).displacementLine = displacementLine;
-        }
-
-        // Fit content to show signal
-        chartRef.current.timeScale().fitContent();
       }
     } catch (error) {
       console.error('Error updating chart data:', error);
@@ -407,18 +488,27 @@ export function InteractiveLiveChart({
     try {
       chartRef.current.applyOptions({
         layout: {
-          background: { type: ColorType.Solid, color: isDark ? '#0b140d' : '#ffffff' },
+          background: { type: ColorType.Solid, color: isDark ? '#0a0e0b' : '#ffffff' },
           textColor: isDark ? '#ffffff' : '#1a1a1a',
+          fontSize: 11,
         },
         grid: {
-          vertLines: { color: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(19, 236, 55, 0.1)', style: 0 },
-          horzLines: { color: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(19, 236, 55, 0.1)', style: 0 },
+          vertLines: {
+            color: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(19, 236, 55, 0.08)',
+            style: 0,
+            visible: true,
+          },
+          horzLines: {
+            color: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(19, 236, 55, 0.08)',
+            style: 0,
+            visible: true,
+          },
         },
         timeScale: {
-          borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(19, 236, 55, 0.2)',
+          borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(19, 236, 55, 0.15)',
         },
         rightPriceScale: {
-          borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(19, 236, 55, 0.2)',
+          borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(19, 236, 55, 0.15)',
         },
         crosshair: {
           vertLine: {
@@ -455,22 +545,22 @@ export function InteractiveLiveChart({
         const updates = [...updateQueueRef.current];
         updateQueueRef.current = [];
 
-        if (updates.length > 0 && candlestickSeriesRef.current && volumeSeriesRef.current) {
+        if (updates.length > 0 && candlestickSeriesRef.current) {
           // Update candles array
           const updatedCandles = [...candlesRef.current];
-          
+
           updates.forEach((update) => {
             const index = updatedCandles.findIndex(
               c => new Date(c.openTime).getTime() === new Date(update.openTime).getTime()
             );
-            
+
             if (index >= 0) {
               // Update existing candle with animation
               updatedCandles[index] = update;
             } else {
               // Add new candle with animation
               updatedCandles.push(update);
-              updatedCandles.sort((a, b) => 
+              updatedCandles.sort((a, b) =>
                 new Date(a.openTime).getTime() - new Date(b.openTime).getTime()
               );
             }
@@ -487,23 +577,68 @@ export function InteractiveLiveChart({
             close: candle.close,
           }));
 
-          const volumeData = updatedCandles.map((candle) => ({
-            time: Math.floor(new Date(candle.openTime).getTime() / 1000) as Time,
-            value: candle.volume,
-            color: candle.close >= candle.open ? 'rgba(19, 236, 55, 0.3)' : 'rgba(255, 68, 68, 0.3)',
-          }));
-
           // Smooth update with animation
           requestAnimationFrame(() => {
-            if (candlestickSeriesRef.current && volumeSeriesRef.current) {
+            if (candlestickSeriesRef.current) {
               candlestickSeriesRef.current.setData(chartData);
-              volumeSeriesRef.current.setData(volumeData);
+
+              // Re-add signal marker if signal exists (to maintain it after updates)
+              if (signal && chartRef.current && chartData.length > 0) {
+                const signalDetectedTime = Math.floor(new Date(signal.detectedAt).getTime() / 1000);
+
+                // Search all candles for best match
+                let bestIndex = -1;
+                let bestDiff = Infinity;
+
+                for (let i = 0; i < chartData.length; i++) {
+                  const diff = Math.abs((chartData[i].time as number) - signalDetectedTime);
+                  if (diff < bestDiff) {
+                    bestDiff = diff;
+                    bestIndex = i;
+                  }
+                }
+
+                if (bestIndex >= 0) {
+                  const signalTime = chartData[bestIndex].time;
+                  const patternType = signal.metadata?.type || signal.metadata?.pattern || '';
+                  const direction = signal.signalType === 'BUY' ? 'LONG' : 'SHORT';
+
+                  // Format pattern label
+                  let patternLabel = '';
+                  if (patternType) {
+                    const formattedType = patternType
+                      .replace('_PLUS', '+')
+                      .replace('_', ' ');
+                    patternLabel = formattedType;
+                  } else {
+                    patternLabel = direction;
+                  }
+
+                  // Always use arrows for visibility
+                  const markerShape = signal.signalType === 'BUY' ? 'arrowUp' as const : 'arrowDown' as const;
+
+                  const marker = {
+                    time: signalTime,
+                    position: signal.signalType === 'BUY' ? 'belowBar' as const : 'aboveBar' as const,
+                    color: signal.signalType === 'BUY' ? '#13ec37' : '#ff4444',
+                    shape: markerShape,
+                    text: patternLabel || direction,
+                    size: 3,
+                  };
+
+                  try {
+                    candlestickSeriesRef.current.setMarkers([marker]);
+                  } catch (error) {
+                    console.error('Error updating marker:', error);
+                  }
+                }
+              }
 
               // Update price info
               if (updatedCandles.length > 0) {
                 const lastCandle = updatedCandles[updatedCandles.length - 1];
                 const prevCandle = updatedCandles.length > 1 ? updatedCandles[updatedCandles.length - 2] : null;
-                
+
                 setCurrentPrice(lastCandle.close);
                 if (prevCandle) {
                   setPriceChange(((lastCandle.close - prevCandle.close) / prevCandle.close) * 100);
@@ -519,24 +654,25 @@ export function InteractiveLiveChart({
         }
       }, 100); // Batch updates every 100ms
     }
-  }, [symbol, timeframe, onCandleUpdate]);
+  }, [symbol, timeframe, onCandleUpdate, signal]);
 
   // Subscribe to WebSocket updates
-  useEffect(() => {
-    if (!symbol || !timeframe) return;
+  // TODO: Re-enable when WebSocket service is recreated
+  // useEffect(() => {
+  //   if (!symbol || !timeframe) return;
 
-    // Subscribe to symbol updates
-    wsService.subscribeToSymbol(symbol, timeframe);
-    wsService.on('candle:update', handleCandleUpdate);
+  //   // Subscribe to symbol updates
+  //   wsService.subscribeToSymbol(symbol, timeframe);
+  //   wsService.on('candle:update', handleCandleUpdate);
 
-    return () => {
-      wsService.off('candle:update', handleCandleUpdate);
-      wsService.unsubscribeFromSymbol(symbol, timeframe);
-      if (updateTimeoutRef.current) {
-        clearTimeout(updateTimeoutRef.current);
-      }
-    };
-  }, [symbol, timeframe, handleCandleUpdate]);
+  //   return () => {
+  //     wsService.off('candle:update', handleCandleUpdate);
+  //     wsService.unsubscribeFromSymbol(symbol, timeframe);
+  //     if (updateTimeoutRef.current) {
+  //       clearTimeout(updateTimeoutRef.current);
+  //     }
+  //   };
+  // }, [symbol, timeframe, handleCandleUpdate]);
 
   // Chart toolbar functions
   const handleZoomIn = useCallback(() => {
@@ -544,11 +680,13 @@ export function InteractiveLiveChart({
       const timeScale = chartRef.current.timeScale();
       const visibleRange = timeScale.getVisibleRange();
       if (visibleRange) {
-        const range = visibleRange.to - visibleRange.from;
-        const center = (visibleRange.from + visibleRange.to) / 2;
+        const from = visibleRange.from as any as number;
+        const to = visibleRange.to as any as number;
+        const range = to - from;
+        const center = (from + to) / 2;
         timeScale.setVisibleRange({
-          from: center - range * 0.7,
-          to: center + range * 0.7,
+          from: (center - range * 0.7) as any,
+          to: (center + range * 0.7) as any,
         });
       }
     }
@@ -559,11 +697,13 @@ export function InteractiveLiveChart({
       const timeScale = chartRef.current.timeScale();
       const visibleRange = timeScale.getVisibleRange();
       if (visibleRange) {
-        const range = visibleRange.to - visibleRange.from;
-        const center = (visibleRange.from + visibleRange.to) / 2;
+        const from = visibleRange.from as any as number;
+        const to = visibleRange.to as any as number;
+        const range = to - from;
+        const center = (from + to) / 2;
         timeScale.setVisibleRange({
-          from: center - range * 1.4,
-          to: center + range * 1.4,
+          from: (center - range * 1.4) as any,
+          to: (center + range * 1.4) as any,
         });
       }
     }
@@ -574,6 +714,33 @@ export function InteractiveLiveChart({
       chartRef.current.timeScale().fitContent();
     }
   }, []);
+
+  // Convert timeframe to TradingView format
+  const getTradingViewTimeframe = useCallback((tf: string): string => {
+    const tfLower = tf.toLowerCase();
+    if (tfLower === '1m') return '1';
+    if (tfLower === '3m') return '3';
+    if (tfLower === '5m') return '5';
+    if (tfLower === '15m') return '15';
+    if (tfLower === '30m') return '30';
+    if (tfLower === '1h') return '60';
+    if (tfLower === '2h') return '120';
+    if (tfLower === '4h') return '240';
+    if (tfLower === '6h') return '360';
+    if (tfLower === '8h') return '480';
+    if (tfLower === '12h') return '720';
+    if (tfLower === '1d') return 'D';
+    if (tfLower === '3d') return '3D';
+    if (tfLower === '1w') return 'W';
+    if (tfLower === '1M') return 'M';
+    return '240'; // Default to 4h
+  }, []);
+
+  // Get TradingView URL
+  const getTradingViewUrl = useCallback(() => {
+    const tvTimeframe = getTradingViewTimeframe(timeframe);
+    return `https://www.tradingview.com/chart/?symbol=BINANCE:${symbol}&interval=${tvTimeframe}`;
+  }, [symbol, timeframe, getTradingViewTimeframe]);
 
   // Calculate volume for last 24h (optimized with memoization)
   const last24hVolume = useMemo(() => {
@@ -588,156 +755,133 @@ export function InteractiveLiveChart({
   }, [candles]);
 
   return (
-    <div className="relative w-full h-full chart-container">
-      {/* Live Indicator */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="absolute top-4 left-4 z-30 flex items-center gap-2"
-      >
-        <div className="absolute flex items-center gap-2 px-3 py-1.5 rounded-full dark:bg-black/70 light:bg-white/70 backdrop-blur-md dark:border-primary/30 light:border-primary/30 border">
-          <motion.div
-            className="w-2 h-2 rounded-full bg-primary"
-            animate={{
-              scale: [1, 1.2, 1],
-              opacity: [1, 0.7, 1],
-            }}
-            transition={{
-              duration: 2,
-              repeat: Infinity,
-              ease: 'easeInOut',
-            }}
-          />
-          <span className="text-xs font-bold text-primary uppercase tracking-wider">Live</span>
-        </div>
-      </motion.div>
+    <div className="relative w-full h-full chart-container bg-background-dark/20 backdrop-blur-sm rounded-2xl overflow-hidden border dark:border-white/5 light:border-green-200 shadow-2xl">
+      {/* Texture Overlay */}
+      <div className="absolute inset-0 pointer-events-none z-0 opacity-20 bg-[url('/grid-texture.png')] bg-repeat opacity-[0.03]"></div>
 
       {/* Toolbar */}
       <motion.div
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 0.2 }}
-        className="absolute top-4 right-4 z-20 flex items-center gap-2 chart-toolbar"
+        className="absolute top-4 right-4 z-20 flex items-center gap-2 chart-toolbar pointer-events-auto"
       >
-        <div className="flex items-center gap-1 px-2 py-1 rounded-lg dark:bg-black/60 light:bg-white/60 backdrop-blur-md dark:border-white/10 light:border-green-300">
+        <div className="flex items-center gap-1 px-2 py-1.5 rounded-xl glass-panel shadow-lg border dark:border-white/10 light:border-green-300">
           <motion.button
-            whileHover={{ scale: 1.1 }}
+            whileHover={{ scale: 1.15, color: '#13ec37' }}
             whileTap={{ scale: 0.9 }}
             onClick={handleZoomIn}
-            className="p-1.5 rounded dark:hover:bg-white/10 light:hover:bg-green-100 dark:text-gray-300 light:text-text-dark dark:hover:text-white light:hover:text-text-dark transition-colors chart-toolbar-button"
+            className="p-2 rounded-lg dark:hover:bg-white/10 light:hover:bg-green-100 dark:text-gray-400 light:text-text-dark transition-all duration-300 chart-toolbar-button"
             title="Zoom In"
           >
-            <span className="material-symbols-outlined text-lg">add</span>
+            <span className="material-symbols-outlined text-xl">add</span>
           </motion.button>
           <motion.button
-            whileHover={{ scale: 1.1 }}
+            whileHover={{ scale: 1.15, color: '#13ec37' }}
             whileTap={{ scale: 0.9 }}
             onClick={handleZoomOut}
-            className="p-1.5 rounded dark:hover:bg-white/10 light:hover:bg-green-100 dark:text-gray-300 light:text-text-dark dark:hover:text-white light:hover:text-text-dark transition-colors chart-toolbar-button"
+            className="p-2 rounded-lg dark:hover:bg-white/10 light:hover:bg-green-100 dark:text-gray-400 light:text-text-dark transition-all duration-300 chart-toolbar-button"
             title="Zoom Out"
           >
-            <span className="material-symbols-outlined text-lg">remove</span>
+            <span className="material-symbols-outlined text-xl">remove</span>
           </motion.button>
-          <div className="w-px h-4 dark:bg-white/10 light:bg-green-300 mx-1"></div>
+          <div className="w-px h-5 dark:bg-white/10 light:bg-green-300 mx-1"></div>
           <motion.button
-            whileHover={{ scale: 1.1 }}
+            whileHover={{ scale: 1.15, color: '#13ec37' }}
             whileTap={{ scale: 0.9 }}
             onClick={handleResetZoom}
-            className="p-1.5 rounded dark:hover:bg-white/10 light:hover:bg-green-100 dark:text-gray-300 light:text-text-dark dark:hover:text-white light:hover:text-text-dark transition-colors chart-toolbar-button"
+            className="p-2 rounded-lg dark:hover:bg-white/10 light:hover:bg-green-100 dark:text-gray-400 light:text-text-dark transition-all duration-300 chart-toolbar-button"
             title="Reset Zoom"
           >
-            <span className="material-symbols-outlined text-lg">fit_screen</span>
+            <span className="material-symbols-outlined text-xl">fit_screen</span>
           </motion.button>
         </div>
+        {signal && (
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setShowTradingView(!showTradingView)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl backdrop-blur-xl transition-all duration-300 shadow-lg border group ${showTradingView
+              ? 'bg-primary/20 border-primary/50 text-primary shadow-[0_0_15px_rgba(19,236,55,0.2)]'
+              : 'glass-panel dark:border-white/10 light:border-green-300 dark:text-gray-300 light:text-text-dark hover:border-primary/30 hover:text-primary'
+              }`}
+            title={showTradingView ? "Switch to Native Chart" : "Switch to TradingView"}
+          >
+            <span className="material-symbols-outlined text-xl transition-transform group-hover:rotate-180 duration-500">
+              {showTradingView ? 'candlestick_chart' : 'change_history'}
+            </span>
+            <span className="text-xs font-bold hidden sm:inline uppercase tracking-wider">
+              {showTradingView ? 'Native Chart' : 'TradingView'}
+            </span>
+          </motion.button>
+        )}
       </motion.div>
 
-      {/* Price Info Overlay - Top Left (moved down to make room for Live indicator) */}
+      {/* Price Info Overlay - Bottom Left */}
       {currentPrice !== null && (
         <motion.div
-          initial={{ opacity: 0, y: -10 }}
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="absolute top-16 left-4 z-20 flex flex-col gap-3 price-info-overlay"
+          className="absolute bottom-6 left-6 z-20 flex flex-col gap-3 pointer-events-none"
         >
-          {/* First Row: Current Price and Signal */}
-          <div className="flex items-start gap-3">
-            <motion.div
-              key={currentPrice}
-              initial={{ scale: 1.05 }}
-              animate={{ scale: 1 }}
-              className={`px-3 py-2 rounded-lg dark:bg-black/70 light:bg-white/70 backdrop-blur-md dark:border-white/10 light:border-green-300 whitespace-nowrap ${
-                priceChange > 0 ? 'price-change-positive' : priceChange < 0 ? 'price-change-negative' : ''
-              }`}
-            >
-              <div className="text-xs dark:text-gray-400 light:text-text-light-secondary mb-1">Current Price</div>
-              <div className="text-lg font-bold dark:text-white light:text-text-dark font-mono">
-                ${currentPrice.toFixed(2)}
-              </div>
-            </motion.div>
-            {signal && (
-              <motion.div
-                initial={{ scale: 0.9 }}
-                animate={{ scale: 1 }}
-                className={`px-3 py-2 rounded-lg dark:bg-black/70 light:bg-white/70 backdrop-blur-md border whitespace-nowrap ${
-                  signal.signalType === 'BUY' ? 'dark:border-primary/30 light:border-primary/30' : 'dark:border-red-500/30 light:border-red-500/30'
-                } ${signal.signalType === 'BUY' ? 'signal-marker' : 'signal-marker-bearish'}`}
-              >
-                <div className="text-xs dark:text-gray-400 light:text-text-light-secondary mb-1">Signal</div>
-                <div className={`text-sm font-bold font-mono ${
-                  signal.signalType === 'BUY' ? 'text-primary' : 'text-red-500'
-                }`}>
-                  {signal.signalType === 'BUY' ? 'LONG' : 'SHORT'}
-                </div>
-              </motion.div>
-            )}
-          </div>
-          {/* Second Row: 24h Change, Volume, Last Update */}
-          <div className="flex items-start gap-3 flex-wrap">
-            {priceChange !== 0 && (
-              <motion.div
-                key={priceChange}
-                initial={{ scale: 1.05 }}
-                animate={{ scale: 1 }}
-                className={`px-3 py-2 rounded-lg dark:bg-black/70 light:bg-white/70 backdrop-blur-md border whitespace-nowrap ${
-                  priceChange >= 0 ? 'dark:border-primary/30 light:border-primary/30 text-primary' : 'dark:border-red-500/30 light:border-red-500/30 text-red-500'
-                }`}
-              >
-                <div className="text-xs mb-1">24h Change</div>
-                <div className={`text-sm font-bold font-mono ${priceChange >= 0 ? 'text-primary' : 'text-red-500'}`}>
-                  {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
-                </div>
-              </motion.div>
-            )}
-            {last24hVolume > 0 && (
-              <div className="px-3 py-2 rounded-lg dark:bg-black/70 light:bg-white/70 backdrop-blur-md dark:border-white/10 light:border-green-300 whitespace-nowrap">
-                <div className="text-xs dark:text-gray-400 light:text-text-light-secondary mb-1">24h Volume</div>
-                <div className="text-sm font-bold dark:text-white light:text-text-dark font-mono">
-                  {last24hVolume.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          <div className="flex items-end gap-4">
+            <div className="flex flex-col">
+              <div className="flex items-baseline gap-3">
+                <span className="text-5xl font-black tracking-tighter dark:text-white light:text-text-dark drop-shadow-lg font-mono">
+                  {currentPrice.toFixed(2)}
+                </span>
+                <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-sm font-bold backdrop-blur-md border ${priceChange >= 0
+                  ? 'bg-green-500/10 border-green-500/20 text-green-500'
+                  : 'bg-red-500/10 border-red-500/20 text-red-500'
+                  }`}>
+                  <span className="material-symbols-outlined text-sm font-black">
+                    {priceChange >= 0 ? 'arrow_upward' : 'arrow_downward'}
+                  </span>
+                  <span>{Math.abs(priceChange).toFixed(2)}%</span>
                 </div>
               </div>
-            )}
-            {lastUpdateTime && (
-              <div className="px-3 py-2 rounded-lg dark:bg-black/70 light:bg-white/70 backdrop-blur-md dark:border-white/10 light:border-green-300 whitespace-nowrap">
-                <div className="text-xs dark:text-gray-400 light:text-text-light-secondary mb-1">Last Update</div>
-                <div className="text-xs font-mono dark:text-white light:text-text-dark">
-                  {lastUpdateTime.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              <div className="flex items-center gap-4 mt-1">
+                <div className="flex items-center gap-2">
+                  <span className={`w-2 h-2 rounded-full ${lastUpdateTime && (Date.now() - lastUpdateTime.getTime()) < 5000 ? 'bg-primary animate-pulse shadow-[0_0_8px_#13ec37]' : 'bg-gray-500'}`}></span>
+                  <span className="text-xs font-mono uppercase tracking-widest dark:text-gray-400 light:text-text-light-secondary opacity-70">
+                    Real-time Data • {symbol} • {timeframe}
+                  </span>
                 </div>
+
+                {/* ICT Bias Indicator */}
+                {ictBias && (
+                  <div className="flex items-center gap-2 pl-4 border-l border-white/10">
+                    <span className="text-xs font-mono text-gray-400 uppercase tracking-widest opacity-70">BIAS:</span>
+                    <span className={`text-xs font-bold px-1.5 py-0.5 rounded border ${ictBias.bias === 'BULLISH' ? 'bg-[#13ec37]/10 text-[#13ec37] border-[#13ec37]/20 shadow-[0_0_10px_rgba(19,236,55,0.1)]' :
+                        ictBias.bias === 'BEARISH' ? 'bg-[#ff4444]/10 text-[#ff4444] border-[#ff4444]/20 shadow-[0_0_10px_rgba(255,68,68,0.1)]' :
+                          'bg-gray-500/10 text-gray-400 border-gray-500/20'
+                      }`}>
+                      {ictBias.bias}
+                    </span>
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
         </motion.div>
-      )}
+      )
+      }
+      {/* TradingView Widget Overlay */}
+      {
+        showTradingView && (
+          <div className="absolute inset-0 z-10 bg-background-dark/95 backdrop-blur-sm">
+            <TradingViewWidget
+              symbol={symbol}
+              interval={getTradingViewTimeframe(timeframe)}
+              theme={isDark ? 'dark' : 'light'}
+              height="100%"
+            />
+          </div>
+        )
+      }
 
-      {/* Chart Container */}
-      <div 
-        ref={chartContainerRef} 
-        className="w-full"
-        style={{ 
-          height: isFullscreen ? 'calc(100vh - 100px)' : `${height}px`,
-          minHeight: isFullscreen ? 'calc(100vh - 100px)' : `${height}px`,
-          position: 'relative',
-        }}
-      />
-    </div>
+      <div ref={chartContainerRef} className="w-full h-full" />
+    </div >
   );
 }
