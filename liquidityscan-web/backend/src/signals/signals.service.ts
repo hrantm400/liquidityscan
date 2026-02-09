@@ -69,11 +69,21 @@ export class SignalsService {
   private signals: StoredSignal[] = [];
 
   /**
-   * Normalize webhook body: Grno format (body.signals) -> transformed array; else array or single object -> [body].
+   * Normalize webhook body:
+   * - Grno batch: { signals: [ { symbol, price, signals_by_timeframe }, ... ] } -> transform;
+   * - Grno single: { symbol, price, signals_by_timeframe } (one coin per request) -> wrap and transform;
+   * - else array or generic object -> [body].
    */
   normalizeWebhookBody(body: unknown): WebhookSignalInput[] {
-    if (body != null && typeof body === 'object' && Array.isArray((body as any).signals)) {
-      return transformGrnoPayloadToSignals(body);
+    if (body != null && typeof body === 'object') {
+      const b = body as Record<string, unknown>;
+      if (Array.isArray(b.signals)) {
+        return transformGrnoPayloadToSignals(body);
+      }
+      // Single-coin format: one object with symbol + signals_by_timeframe (no top-level "signals" array)
+      if (typeof b.symbol === 'string' && b.signals_by_timeframe != null && typeof b.signals_by_timeframe === 'object') {
+        return transformGrnoPayloadToSignals({ signals: [body] });
+      }
     }
     if (Array.isArray(body)) return (body as WebhookSignalInput[]);
     if (body != null && typeof body === 'object') return [body as WebhookSignalInput];

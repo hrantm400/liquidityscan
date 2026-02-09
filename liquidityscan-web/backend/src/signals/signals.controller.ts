@@ -22,7 +22,8 @@ export class SignalsController {
       throw new UnauthorizedException('Invalid or missing webhook secret');
     }
     this.logger.log('Webhook authenticated (secret OK)');
-    const coinsInPayload = Array.isArray((body as any)?.signals) ? (body as any).signals.length : 0;
+    const b = body as Record<string, unknown> | null;
+    const coinsInPayload = Array.isArray(b?.signals) ? b.signals.length : (b?.symbol && b?.signals_by_timeframe ? 1 : 0);
     const arr = this.signalsService.normalizeWebhookBody(body);
     const received = this.signalsService.addSignals(arr);
     this.logger.log(

@@ -28,9 +28,14 @@ If you see `parsed=0` or `accepted=0` but Grno sends data, check: (1) payload ha
 
 ## Supported payload format (Grno)
 
-Send a JSON body with a `signals` array. Each item can have `signals_by_timeframe` with timeframes `4h`, `1d`, `1w`. Signal strings containing `"Bull"` are mapped to BUY, `"Bear"` to SELL. The backend converts this into internal signals automatically.
+**Two formats are supported:**
 
-Example:
+1. **Batch:** one request with `signals` array: `{ "signals": [ { "symbol", "price", "signals_by_timeframe" }, ... ] }`.
+2. **Single-coin:** one request per coin: body = single object `{ "symbol", "price", "signals_by_timeframe", ... }` (no top-level `signals` array).
+
+Each item (or the single object) can have `signals_by_timeframe` with timeframes `4h`, `1d`, `1w`. Signal strings containing `"Bull"` are mapped to BUY, `"Bear"` to SELL. The backend converts this into internal signals automatically.
+
+Example (batch):
 
 ```json
 {
