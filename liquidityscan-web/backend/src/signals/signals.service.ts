@@ -43,7 +43,8 @@ function transformGrnoPayloadToSignals(body: unknown): WebhookSignalInput[] {
     const byTf = item.signals_by_timeframe && typeof item.signals_by_timeframe === 'object' ? item.signals_by_timeframe : {};
 
     for (const tf of Object.keys(byTf)) {
-      if (!ALLOWED_TF.has(tf)) continue;
+      const tfNorm = tf.toLowerCase();
+      if (!ALLOWED_TF.has(tfNorm)) continue; // only 4h, 1d, 1w; ignore 1h, 5m, 15m, etc.
       const block = byTf[tf];
       const signalsList = Array.isArray(block?.signals) ? block.signals : [];
       const price = typeof block?.price === 'number' ? block.price : fallbackPrice;
@@ -53,7 +54,7 @@ function transformGrnoPayloadToSignals(body: unknown): WebhookSignalInput[] {
       out.push({
         strategyType: 'SUPER_ENGULFING',
         symbol,
-        timeframe: tf,
+        timeframe: tfNorm,
         signalType,
         price,
         detectedAt,

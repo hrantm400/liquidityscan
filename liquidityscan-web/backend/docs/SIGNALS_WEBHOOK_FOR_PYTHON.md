@@ -49,7 +49,7 @@ Example:
 }
 ```
 
-- **Timeframes:** only `4h`, `1d`, `1w` are processed; others are ignored.
+- **Timeframes:** only `4h`, `1d`, `1w` are processed (keys case-insensitive, e.g. `4H`/`4h`); `1h`, `5m`, `15m` etc. are ignored.
 - **Signal type:** from the first string in `signals` — if it contains `"Bear"` → SELL, otherwise → BUY.
 - **Price:** taken from the timeframe block `price` or the symbol-level `price`.
 

@@ -213,12 +213,8 @@ export function MonitorSuperEngulfing() {
     signals.forEach((signal) => {
       if (signal.status === 'ACTIVE') {
         const tf = signal.timeframe.toLowerCase();
-        // Handle both lowercase and mixed case
         if (tf === '4h' || tf === '1d' || tf === '1w') {
           stats[tf] = (stats[tf] || 0) + 1;
-        } else if (tf === '4H' || tf === '1D' || tf === '1W') {
-          const normalizedTf = tf.toLowerCase();
-          stats[normalizedTf] = (stats[normalizedTf] || 0) + 1;
         }
       }
     });
