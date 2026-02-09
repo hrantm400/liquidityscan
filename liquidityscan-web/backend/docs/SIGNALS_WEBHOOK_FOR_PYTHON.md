@@ -1,5 +1,24 @@
 # Signals Webhook (for Python / Grno)
 
+## How to see if signals are received (logs)
+
+On the server, API logs (e.g. `pm2 logs liquidityscan-api` or Docker logs) show:
+
+| Log message | Meaning |
+|-------------|--------|
+| `Webhook POST /signals/webhook — request received` | Request reached the server (connection OK). |
+| `Webhook rejected: invalid or missing x-webhook-secret` | Wrong or missing secret → 401. |
+| `Webhook authenticated (secret OK)` | Secret is correct, payload will be processed. |
+| `Webhook result: payload coins=48, parsed (4h/1d/1w)=12, accepted=12` | 48 items in `body.signals`, 12 had 4h/1d/1w, all 12 saved. |
+
+- **coins** = number of elements in `body.signals`.
+- **parsed** = signals with timeframe 4h, 1d or 1w (1h and others are ignored).
+- **accepted** = how many were actually stored.
+
+If you see `parsed=0` or `accepted=0` but Grno sends data, check: (1) payload has `signals` array, (2) each item has `signals_by_timeframe` with keys `4h`, `1d` or `1w` (case-insensitive).
+
+---
+
 ## Endpoint
 
 - **URL:** `POST https://liquidityscan.io/api/signals/webhook`
