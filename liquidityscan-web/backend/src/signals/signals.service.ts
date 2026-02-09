@@ -92,14 +92,24 @@ export class SignalsService {
 
   /**
    * Add signals. Only SUPER_ENGULFING with timeframe 4h|1d|1w are accepted.
-   * Others are filtered out. Generate id if missing. Keep at most MAX_SIGNALS (newest).
+   * If an item has signals_by_timeframe but no timeframe (raw Grno single-coin), expand it first.
    */
-  addSignals(items: Array<{ id?: string; strategyType: string; symbol: string; timeframe: string; signalType: string; price: number; detectedAt?: string; status?: string; metadata?: Record<string, unknown> }>): number {
+  addSignals(items: Array<{ id?: string; strategyType?: string; symbol: string; timeframe?: string; signalType?: string; price: number; detectedAt?: string; status?: string; metadata?: Record<string, unknown>; signals_by_timeframe?: Record<string, unknown> }>): number {
     const allowedTf = new Set(SUPER_ENGULFING_TIMEFRAMES);
     const nowIso = new Date().toISOString();
-    const toAdd: StoredSignal[] = [];
 
+    // Expand raw Grno objects (single-coin: have signals_by_timeframe but no timeframe/strategyType)
+    const expanded: WebhookSignalInput[] = [];
     for (const s of items) {
+      if (s.strategyType === 'SUPER_ENGULFING' && s.timeframe && allowedTf.has(s.timeframe)) {
+        expanded.push(s as WebhookSignalInput);
+      } else if (typeof (s as any).symbol === 'string' && (s as any).signals_by_timeframe != null && typeof (s as any).signals_by_timeframe === 'object') {
+        expanded.push(...transformGrnoPayloadToSignals({ signals: [s] }));
+      }
+    }
+
+    const toAdd: StoredSignal[] = [];
+    for (const s of expanded) {
       if (s.strategyType !== 'SUPER_ENGULFING' || !allowedTf.has(s.timeframe as any)) continue;
       const id = s.id?.trim() || `${s.symbol}-${s.timeframe}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       toAdd.push({
