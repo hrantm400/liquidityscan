@@ -101,7 +101,7 @@ export class SignalsService {
     // Expand raw Grno objects (single-coin: have signals_by_timeframe but no timeframe/strategyType)
     const expanded: WebhookSignalInput[] = [];
     for (const s of items) {
-      if (s.strategyType === 'SUPER_ENGULFING' && s.timeframe && allowedTf.has(s.timeframe)) {
+      if (s.strategyType === 'SUPER_ENGULFING' && s.timeframe && allowedTf.has(s.timeframe as '4h' | '1d' | '1w')) {
         expanded.push(s as WebhookSignalInput);
       } else if (typeof (s as any).symbol === 'string' && (s as any).signals_by_timeframe != null && typeof (s as any).signals_by_timeframe === 'object') {
         expanded.push(...transformGrnoPayloadToSignals({ signals: [s] }));
