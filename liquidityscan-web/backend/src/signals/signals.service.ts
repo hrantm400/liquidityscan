@@ -2,6 +2,19 @@ import { Injectable } from '@nestjs/common';
 import { SUPER_ENGULFING_TIMEFRAMES } from './dto/webhook-signal.dto';
 
 const MAX_SIGNALS = 5000;
+const ALLOWED_TF = new Set<string>(SUPER_ENGULFING_TIMEFRAMES);
+
+export type WebhookSignalInput = {
+  id?: string;
+  strategyType: string;
+  symbol: string;
+  timeframe: string;
+  signalType: string;
+  price: number;
+  detectedAt?: string;
+  status?: string;
+  metadata?: Record<string, unknown>;
+};
 
 export interface StoredSignal {
   id: string;
@@ -15,9 +28,56 @@ export interface StoredSignal {
   metadata?: Record<string, unknown>;
 }
 
+/** Grno payload: body.signals is array of { symbol, price, signals_by_timeframe: { "1d": { signals: ["REV Bull"], price, time }, ... } } */
+function transformGrnoPayloadToSignals(body: unknown): WebhookSignalInput[] {
+  if (body == null || typeof body !== 'object' || !Array.isArray((body as any).signals)) {
+    return [];
+  }
+  const grno = body as { signals: Array<{ symbol: string; price: number; signals_by_timeframe?: Record<string, { signals?: string[]; price?: number; time?: string }> }> };
+  const nowIso = new Date().toISOString();
+  const out: WebhookSignalInput[] = [];
+
+  for (const item of grno.signals) {
+    const symbol = String(item.symbol ?? '');
+    const fallbackPrice = Number(item.price) || 0;
+    const byTf = item.signals_by_timeframe && typeof item.signals_by_timeframe === 'object' ? item.signals_by_timeframe : {};
+
+    for (const tf of Object.keys(byTf)) {
+      if (!ALLOWED_TF.has(tf)) continue;
+      const block = byTf[tf];
+      const signalsList = Array.isArray(block?.signals) ? block.signals : [];
+      const price = typeof block?.price === 'number' ? block.price : fallbackPrice;
+      const detectedAt = typeof block?.time === 'string' ? block.time : nowIso;
+      const firstSignal = signalsList[0];
+      const signalType = typeof firstSignal === 'string' && firstSignal.toLowerCase().includes('bear') ? 'SELL' : 'BUY';
+      out.push({
+        strategyType: 'SUPER_ENGULFING',
+        symbol,
+        timeframe: tf,
+        signalType,
+        price,
+        detectedAt,
+      });
+    }
+  }
+  return out;
+}
+
 @Injectable()
 export class SignalsService {
   private signals: StoredSignal[] = [];
+
+  /**
+   * Normalize webhook body: Grno format (body.signals) -> transformed array; else array or single object -> [body].
+   */
+  normalizeWebhookBody(body: unknown): WebhookSignalInput[] {
+    if (body != null && typeof body === 'object' && Array.isArray((body as any).signals)) {
+      return transformGrnoPayloadToSignals(body);
+    }
+    if (Array.isArray(body)) return (body as WebhookSignalInput[]);
+    if (body != null && typeof body === 'object') return [body as WebhookSignalInput];
+    return [];
+  }
 
   /**
    * Add signals. Only SUPER_ENGULFING with timeframe 4h|1d|1w are accepted.

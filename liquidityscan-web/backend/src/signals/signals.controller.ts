@@ -12,12 +12,13 @@ export class SignalsController {
     @Headers(WEBHOOK_SECRET_HEADER) secret: string | undefined,
     @Body() body: unknown,
   ): Promise<{ received: number }> {
-    const expected = process.env.SIGNALS_WEBHOOK_SECRET;
-    if (!expected || secret !== expected) {
+    const expected = (process.env.SIGNALS_WEBHOOK_SECRET ?? '').trim();
+    const secretTrimmed = (secret ?? '').trim();
+    if (!expected || secretTrimmed !== expected) {
       throw new UnauthorizedException('Invalid or missing webhook secret');
     }
-    const arr = Array.isArray(body) ? body : body != null && typeof body === 'object' ? [body] : [];
-    const received = this.signalsService.addSignals(arr as any[]);
+    const arr = this.signalsService.normalizeWebhookBody(body);
+    const received = this.signalsService.addSignals(arr);
     return { received };
   }
 

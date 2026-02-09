@@ -1,0 +1,59 @@
+# Signals Webhook (for Python / Grno)
+
+## Endpoint
+
+- **URL:** `POST https://liquidityscan.io/api/signals/webhook`
+- **Headers:**
+  - `Content-Type: application/json`
+  - `x-webhook-secret: <your secret>` — value must match `SIGNALS_WEBHOOK_SECRET` on the server (no spaces/newlines).
+
+## Supported payload format (Grno)
+
+Send a JSON body with a `signals` array. Each item can have `signals_by_timeframe` with timeframes `4h`, `1d`, `1w`. Signal strings containing `"Bull"` are mapped to BUY, `"Bear"` to SELL. The backend converts this into internal signals automatically.
+
+Example:
+
+```json
+{
+  "signals": [
+    {
+      "symbol": "ACAUSDT",
+      "price": 0.0043,
+      "signals_by_timeframe": {
+        "1d": {
+          "price": 0.0043,
+          "signals": ["REV Bull"],
+          "time": "2026-02-09 00:00",
+          "volume": 190491507.14
+        }
+      },
+      "volume_24h": 3125869337.33
+    },
+    {
+      "symbol": "BABYUSDT",
+      "price": 0.01371,
+      "signals_by_timeframe": {
+        "1d": {
+          "price": 0.01371,
+          "signals": ["RUN Bear"],
+          "time": "2026-02-09 00:00",
+          "volume": 18440749
+        }
+      },
+      "volume_24h": 1086942340
+    }
+  ],
+  "scanning": true,
+  "last_update": null,
+  "total_coins": 2
+}
+```
+
+- **Timeframes:** only `4h`, `1d`, `1w` are processed; others are ignored.
+- **Signal type:** from the first string in `signals` — if it contains `"Bear"` → SELL, otherwise → BUY.
+- **Price:** taken from the timeframe block `price` or the symbol-level `price`.
+
+## Response
+
+- **200:** `{ "received": <number> }` — number of signals accepted.
+- **401:** invalid or missing `x-webhook-secret`.
