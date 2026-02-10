@@ -82,6 +82,12 @@ export class SignalsService {
       if (Array.isArray(b.signals)) {
         return transformGrnoPayloadToSignals(body);
       }
+      // Grno wrapper: { event, timestamp, coin: { symbol, price, signals_by_timeframe } }
+      const coin = b.coin;
+      if (coin != null && typeof coin === 'object') {
+        const out = transformGrnoPayloadToSignals({ signals: [coin] });
+        if (out.length > 0) return out;
+      }
       // Single-coin format: one object with symbol + signals_by_timeframe or signalsByTimeframe (no top-level "signals" array)
       const byTf = b.signals_by_timeframe ?? b.signalsByTimeframe;
       if (typeof b.symbol === 'string' && byTf != null && typeof byTf === 'object') {
@@ -109,6 +115,8 @@ export class SignalsService {
     for (const s of items) {
       if (s.strategyType === 'SUPER_ENGULFING' && s.timeframe && allowedTf.has(s.timeframe as '4h' | '1d' | '1w')) {
         expanded.push(s as WebhookSignalInput);
+      } else if ((s as any).coin != null && typeof (s as any).coin === 'object') {
+        expanded.push(...transformGrnoPayloadToSignals({ signals: [(s as any).coin] }));
       } else if (typeof (s as any).symbol === 'string') {
         const tf = (s as any).signals_by_timeframe ?? (s as any).signalsByTimeframe;
         if (tf != null && typeof tf === 'object') {

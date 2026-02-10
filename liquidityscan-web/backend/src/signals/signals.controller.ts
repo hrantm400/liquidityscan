@@ -25,8 +25,9 @@ export class SignalsController {
     const b = body as Record<string, unknown> | null;
     const bodyKeys = b && typeof b === 'object' ? Object.keys(b).join(',') : 'not-object';
     this.logger.log(`Webhook body keys: ${bodyKeys}`);
+    const hasCoin = b?.coin != null && typeof b.coin === 'object';
     const hasByTf = b?.signals_by_timeframe != null || (b as any)?.signalsByTimeframe != null;
-    const coinsInPayload = Array.isArray(b?.signals) ? b.signals.length : (b?.symbol && hasByTf ? 1 : 0);
+    const coinsInPayload = Array.isArray(b?.signals) ? b.signals.length : (hasCoin || (b?.symbol && hasByTf) ? 1 : 0);
     const arr = this.signalsService.normalizeWebhookBody(body);
     const received = this.signalsService.addSignals(arr);
     this.logger.log(
