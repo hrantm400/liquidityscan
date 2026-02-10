@@ -190,3 +190,18 @@ model Lesson {
 
   @@map("lessons")
 }
+
+model SuperEngulfingSignal {
+  id         String   @id
+  symbol     String
+  timeframe  String
+  signalType String
+  price      Decimal  @db.Decimal(20, 8)
+  detectedAt DateTime
+  status     String   @default("ACTIVE")
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("super_engulfing_signals")
+}

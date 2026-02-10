@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 import { SUPER_ENGULFING_TIMEFRAMES } from './dto/webhook-signal.dto';
 
 const MAX_SIGNALS = 5000;
@@ -80,6 +82,8 @@ export class SignalsService {
   private readonly logger = new Logger(SignalsService.name);
   private signals: StoredSignal[] = [];
 
+  constructor(private readonly prisma: PrismaService) {}
+
   /**
    * Normalize webhook body:
    * - Grno batch: { signals: [ { symbol, price, signals_by_timeframe }, ... ] } -> transform;
@@ -115,7 +119,7 @@ export class SignalsService {
    * Add signals. Only SUPER_ENGULFING with timeframe 4h|1d|1w are accepted.
    * If an item has signals_by_timeframe but no timeframe (raw Grno single-coin), expand it first.
    */
-  addSignals(items: Array<{ id?: string; strategyType?: string; symbol: string; timeframe?: string; signalType?: string; price: number; detectedAt?: string; status?: string; metadata?: Record<string, unknown>; signals_by_timeframe?: Record<string, unknown> }>): number {
+  async addSignals(items: Array<{ id?: string; strategyType?: string; symbol: string; timeframe?: string; signalType?: string; price: number; detectedAt?: string; status?: string; metadata?: Record<string, unknown>; signals_by_timeframe?: Record<string, unknown> }>): Promise<number> {
     const allowedTf = new Set(SUPER_ENGULFING_TIMEFRAMES);
     const nowIso = new Date().toISOString();
 
@@ -165,17 +169,60 @@ export class SignalsService {
     if (this.signals.length > MAX_SIGNALS) {
       this.signals = this.signals.slice(-MAX_SIGNALS);
     }
+    if (toAdd.length > 0) {
+      try {
+        await this.prisma.superEngulfingSignal.createMany({
+          data: toAdd.map((s) => ({
+            id: s.id,
+            symbol: s.symbol,
+            timeframe: s.timeframe,
+            signalType: s.signalType,
+            price: new Prisma.Decimal(s.price),
+            detectedAt: new Date(s.detectedAt),
+            status: s.status,
+            metadata: s.metadata as Prisma.JsonValue | undefined,
+          })),
+          skipDuplicates: true,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(`Failed to persist SuperEngulfing signals: ${msg}`);
+      }
+    }
+
     return toAdd.length;
   }
 
   /**
    * Get stored signals. Currently only Super Engulfing is stored; strategyType filter is optional.
    */
-  getSignals(strategyType?: string): StoredSignal[] {
-    let list = this.signals;
-    if (strategyType) {
-      list = list.filter((s) => s.strategyType === strategyType);
+  async getSignals(strategyType?: string): Promise<StoredSignal[]> {
+    try {
+      const rows = await this.prisma.superEngulfingSignal.findMany({
+        where: strategyType ? { strategyType } : undefined,
+        orderBy: { detectedAt: 'desc' },
+        take: MAX_SIGNALS,
+      });
+      return rows.map((r) => ({
+        id: r.id,
+        strategyType: r.strategyType,
+        symbol: r.symbol,
+        timeframe: r.timeframe,
+        signalType: r.signalType,
+        price: Number(r.price),
+        detectedAt: r.detectedAt.toISOString(),
+        status: r.status,
+        metadata: r.metadata ?? undefined,
+      }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to load SuperEngulfing signals from DB: ${msg}`);
+      // Fallback to in-memory cache
+      let list = this.signals;
+      if (strategyType) {
+        list = list.filter((s) => s.strategyType === strategyType);
+      }
+      return [...list];
     }
-    return [...list];
   }
 }

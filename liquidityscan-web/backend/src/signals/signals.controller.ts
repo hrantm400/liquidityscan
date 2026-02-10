@@ -29,7 +29,7 @@ export class SignalsController {
     const hasByTf = b?.signals_by_timeframe != null || (b as any)?.signalsByTimeframe != null;
     const coinsInPayload = Array.isArray(b?.signals) ? b.signals.length : (hasCoin || (b?.symbol && hasByTf) ? 1 : 0);
     const arr = this.signalsService.normalizeWebhookBody(body);
-    const received = this.signalsService.addSignals(arr);
+    const received = await this.signalsService.addSignals(arr);
     this.logger.log(
       `Webhook result: payload coins=${coinsInPayload}, parsed (4h/1d/1w)=${arr.length}, accepted=${received}`,
     );
@@ -38,8 +38,9 @@ export class SignalsController {
 
   @Get()
   getSignals(@Query('strategyType') strategyType?: string) {
-    const list = this.signalsService.getSignals(strategyType || undefined);
-    this.logger.log(`GET /signals strategyType=${strategyType ?? 'all'} -> ${list.length} signals`);
-    return list;
+    return this.signalsService.getSignals(strategyType || undefined).then((list) => {
+      this.logger.log(`GET /signals strategyType=${strategyType ?? 'all'} -> ${list.length} signals`);
+      return list;
+    });
   }
 }
