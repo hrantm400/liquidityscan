@@ -39,9 +39,10 @@ function transformGrnoPayloadToSignals(body: unknown): WebhookSignalInput[] {
 
   for (const item of grno.signals) {
     const symbol = String((item as any).symbol ?? '');
-    const fallbackPrice = Number((item as any).price) || 0;
-    let byTfRaw = (item as any).signals_by_timeframe ?? (item as any).signalsByTimeframe;
-    if (!byTfRaw || typeof byTfRaw !== 'object') {
+    const fallbackPrice = Number((item as any).current_price ?? (item as any).price) || 0;
+    // Webhook sends coin.signals (timeframe map); API sends signals_by_timeframe
+    let byTfRaw = (item as any).signals_by_timeframe ?? (item as any).signalsByTimeframe ?? (item as any).signals;
+    if (!byTfRaw || typeof byTfRaw !== 'object' || Array.isArray(byTfRaw)) {
       // Fallback: coin may have 4h/1d/1w at top level
       byTfRaw = {};
       for (const tf of ['4h', '1d', '1w']) {
@@ -49,15 +50,16 @@ function transformGrnoPayloadToSignals(body: unknown): WebhookSignalInput[] {
         if (block != null && typeof block === 'object') (byTfRaw as any)[tf] = block;
       }
     }
-    const byTf = byTfRaw && typeof byTfRaw === 'object' ? byTfRaw : {};
+    const byTf = byTfRaw && typeof byTfRaw === 'object' && !Array.isArray(byTfRaw) ? byTfRaw : {};
 
     for (const tf of Object.keys(byTf)) {
       const tfNorm = tf.toLowerCase();
       if (!ALLOWED_TF.has(tfNorm)) continue; // only 4h, 1d, 1w; ignore 1h, 5m, 15m, etc.
       const block = byTf[tf];
-      const signalsList = Array.isArray(block?.signals) ? block.signals : [];
-      const price = typeof block?.price === 'number' ? block.price : fallbackPrice;
-      const detectedAt = typeof block?.time === 'string' ? block.time : nowIso;
+      const signalsList = Array.isArray(block?.signals) ? block.signals : (typeof (block as any)?.signal === 'string' ? [(block as any).signal] : []);
+      const blockPrice = (block as any)?.current_price ?? (block as any)?.price;
+      const price = typeof blockPrice === 'number' ? blockPrice : fallbackPrice;
+      const detectedAt = typeof (block as any)?.time === 'string' ? (block as any).time : nowIso;
       const firstSignal = signalsList[0];
       const signalType = typeof firstSignal === 'string' && firstSignal.toLowerCase().includes('bear') ? 'SELL' : 'BUY';
       out.push({

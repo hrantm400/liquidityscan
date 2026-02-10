@@ -32,7 +32,7 @@ If you see `parsed=0` or `accepted=0` but Grno sends data, check: (1) payload ha
 
 1. **Batch:** one request with `signals` array: `{ "signals": [ { "symbol", "price", "signals_by_timeframe" }, ... ] }`.
 2. **Single-coin:** one request per coin: body = `{ "symbol", "price", "signals_by_timeframe", ... }`.
-3. **Wrapper (Grno):** body = `{ "event", "timestamp", "coin": { "symbol", "price", "signals_by_timeframe", ... } }` — the backend uses `body.coin` as the signal source.
+3. **Wrapper (Grno webhook):** body = `{ "event", "timestamp", "coin": { "symbol", "current_price", "signals": { "4h": { "signals": ["REV Bull"], "price", "time" }, "1d": {...}, "1w": {...} } } }` — backend uses `body.coin`; accepts `coin.signals` (timeframe map) and `current_price` (or `price`).
 
 Each item (or the single object) can have `signals_by_timeframe` with timeframes `4h`, `1d`, `1w`. Signal strings containing `"Bull"` are mapped to BUY, `"Bear"` to SELL. The backend converts this into internal signals automatically.
 
