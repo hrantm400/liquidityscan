@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { SUPER_ENGULFING_TIMEFRAMES } from './dto/webhook-signal.dto';
 
 const MAX_SIGNALS = 5000;
@@ -40,7 +40,8 @@ function transformGrnoPayloadToSignals(body: unknown): WebhookSignalInput[] {
   for (const item of grno.signals) {
     const symbol = String(item.symbol ?? '');
     const fallbackPrice = Number(item.price) || 0;
-    const byTf = item.signals_by_timeframe && typeof item.signals_by_timeframe === 'object' ? item.signals_by_timeframe : {};
+    const byTfRaw = (item as any).signals_by_timeframe ?? (item as any).signalsByTimeframe;
+    const byTf = byTfRaw && typeof byTfRaw === 'object' ? byTfRaw : {};
 
     for (const tf of Object.keys(byTf)) {
       const tfNorm = tf.toLowerCase();
@@ -66,6 +67,7 @@ function transformGrnoPayloadToSignals(body: unknown): WebhookSignalInput[] {
 
 @Injectable()
 export class SignalsService {
+  private readonly logger = new Logger(SignalsService.name);
   private signals: StoredSignal[] = [];
 
   /**
@@ -80,8 +82,9 @@ export class SignalsService {
       if (Array.isArray(b.signals)) {
         return transformGrnoPayloadToSignals(body);
       }
-      // Single-coin format: one object with symbol + signals_by_timeframe (no top-level "signals" array)
-      if (typeof b.symbol === 'string' && b.signals_by_timeframe != null && typeof b.signals_by_timeframe === 'object') {
+      // Single-coin format: one object with symbol + signals_by_timeframe or signalsByTimeframe (no top-level "signals" array)
+      const byTf = b.signals_by_timeframe ?? b.signalsByTimeframe;
+      if (typeof b.symbol === 'string' && byTf != null && typeof byTf === 'object') {
         return transformGrnoPayloadToSignals({ signals: [body] });
       }
     }
@@ -98,15 +101,22 @@ export class SignalsService {
     const allowedTf = new Set(SUPER_ENGULFING_TIMEFRAMES);
     const nowIso = new Date().toISOString();
 
-    // Expand raw Grno objects (single-coin: have signals_by_timeframe but no timeframe/strategyType)
+    // Expand raw Grno objects (single-coin: have signals_by_timeframe/signalsByTimeframe but no timeframe/strategyType)
     const expanded: WebhookSignalInput[] = [];
+    const first = items[0];
+    const byTf = first && (first as any).signals_by_timeframe != null ? (first as any).signals_by_timeframe : first && (first as any).signalsByTimeframe;
+    this.logger.log(`addSignals: items=${items.length}, firstKeys=${first ? Object.keys(first).join(',') : 'none'}, hasByTf=${!!byTf}`);
     for (const s of items) {
       if (s.strategyType === 'SUPER_ENGULFING' && s.timeframe && allowedTf.has(s.timeframe as '4h' | '1d' | '1w')) {
         expanded.push(s as WebhookSignalInput);
-      } else if (typeof (s as any).symbol === 'string' && (s as any).signals_by_timeframe != null && typeof (s as any).signals_by_timeframe === 'object') {
-        expanded.push(...transformGrnoPayloadToSignals({ signals: [s] }));
+      } else if (typeof (s as any).symbol === 'string') {
+        const tf = (s as any).signals_by_timeframe ?? (s as any).signalsByTimeframe;
+        if (tf != null && typeof tf === 'object') {
+          expanded.push(...transformGrnoPayloadToSignals({ signals: [s] }));
+        }
       }
     }
+    this.logger.log(`addSignals: expanded=${expanded.length}, toAdd will be computed`);
 
     const toAdd: StoredSignal[] = [];
     for (const s of expanded) {

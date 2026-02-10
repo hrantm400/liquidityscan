@@ -23,7 +23,10 @@ export class SignalsController {
     }
     this.logger.log('Webhook authenticated (secret OK)');
     const b = body as Record<string, unknown> | null;
-    const coinsInPayload = Array.isArray(b?.signals) ? b.signals.length : (b?.symbol && b?.signals_by_timeframe ? 1 : 0);
+    const bodyKeys = b && typeof b === 'object' ? Object.keys(b).join(',') : 'not-object';
+    this.logger.log(`Webhook body keys: ${bodyKeys}`);
+    const hasByTf = b?.signals_by_timeframe != null || (b as any)?.signalsByTimeframe != null;
+    const coinsInPayload = Array.isArray(b?.signals) ? b.signals.length : (b?.symbol && hasByTf ? 1 : 0);
     const arr = this.signalsService.normalizeWebhookBody(body);
     const received = this.signalsService.addSignals(arr);
     this.logger.log(
