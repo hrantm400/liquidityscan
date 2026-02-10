@@ -38,9 +38,17 @@ function transformGrnoPayloadToSignals(body: unknown): WebhookSignalInput[] {
   const out: WebhookSignalInput[] = [];
 
   for (const item of grno.signals) {
-    const symbol = String(item.symbol ?? '');
-    const fallbackPrice = Number(item.price) || 0;
-    const byTfRaw = (item as any).signals_by_timeframe ?? (item as any).signalsByTimeframe;
+    const symbol = String((item as any).symbol ?? '');
+    const fallbackPrice = Number((item as any).price) || 0;
+    let byTfRaw = (item as any).signals_by_timeframe ?? (item as any).signalsByTimeframe;
+    if (!byTfRaw || typeof byTfRaw !== 'object') {
+      // Fallback: coin may have 4h/1d/1w at top level
+      byTfRaw = {};
+      for (const tf of ['4h', '1d', '1w']) {
+        const block = (item as any)[tf];
+        if (block != null && typeof block === 'object') (byTfRaw as any)[tf] = block;
+      }
+    }
     const byTf = byTfRaw && typeof byTfRaw === 'object' ? byTfRaw : {};
 
     for (const tf of Object.keys(byTf)) {
@@ -85,6 +93,8 @@ export class SignalsService {
       // Grno wrapper: { event, timestamp, coin: { symbol, price, signals_by_timeframe } }
       const coin = b.coin;
       if (coin != null && typeof coin === 'object') {
+        const coinKeys = Object.keys(coin as object).join(',');
+        this.logger.log(`Webhook body.coin keys: ${coinKeys}`);
         const out = transformGrnoPayloadToSignals({ signals: [coin] });
         if (out.length > 0) return out;
       }
@@ -116,7 +126,9 @@ export class SignalsService {
       if (s.strategyType === 'SUPER_ENGULFING' && s.timeframe && allowedTf.has(s.timeframe as '4h' | '1d' | '1w')) {
         expanded.push(s as WebhookSignalInput);
       } else if ((s as any).coin != null && typeof (s as any).coin === 'object') {
-        expanded.push(...transformGrnoPayloadToSignals({ signals: [(s as any).coin] }));
+        const c = (s as any).coin;
+        this.logger.log(`addSignals unwrap coin keys: ${Object.keys(c).join(',')}`);
+        expanded.push(...transformGrnoPayloadToSignals({ signals: [c] }));
       } else if (typeof (s as any).symbol === 'string') {
         const tf = (s as any).signals_by_timeframe ?? (s as any).signalsByTimeframe;
         if (tf != null && typeof tf === 'object') {
