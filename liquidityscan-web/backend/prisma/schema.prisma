@@ -193,6 +193,7 @@ model Lesson {
 
 model SuperEngulfingSignal {
   id         String   @id
+  strategyType String @default("SUPER_ENGULFING")
   symbol     String
   timeframe  String
   signalType String

@@ -27,7 +27,7 @@ export interface StoredSignal {
   price: number;
   detectedAt: string;
   status: string;
-  metadata?: Record<string, unknown>;
+  metadata?: unknown;
 }
 
 /** Grno payload: body.signals is array of { symbol, price, signals_by_timeframe: { "1d": { signals: ["REV Bull"], price, time }, ... } } */
@@ -199,7 +199,7 @@ export class SignalsService {
   async getSignals(strategyType?: string): Promise<StoredSignal[]> {
     try {
       const rows = await this.prisma.superEngulfingSignal.findMany({
-        where: strategyType ? { strategyType } : undefined,
+        where: strategyType ? { strategyType } as any : undefined,
         orderBy: { detectedAt: 'desc' },
         take: MAX_SIGNALS,
       });
